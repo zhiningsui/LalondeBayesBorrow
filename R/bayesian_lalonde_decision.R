@@ -58,7 +58,7 @@
 #' @import parallel
 #' @import doParallel
 #' @import foreach
-#' @import data.table
+#' @importFrom data.table data.table
 bayesian_lalonde_decision <- function(endpoint, data_summary,
                                       prior_params, lrv = 0, tv= 0, fgr = 0.2, fsr = 0.1, arm_names,
                                       posterior_infer = TRUE, Lalonde_decision = TRUE,

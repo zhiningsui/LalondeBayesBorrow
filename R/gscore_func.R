@@ -16,11 +16,9 @@
 #'
 #' @examples
 #' simulate_gscore(n = 100, mu = 1, sigma = 0.5, prob_zero = 0.2)
-#'
-#' @import stats
 simulate_gscore <- function(n, mu, sigma, prob_zero) {
-  is_zero <- rbinom(n, 1, prob_zero)
-  non_zero_data <- rnorm(sum(!is_zero), mean = mu, sd = sigma)
+  is_zero <- stats::rbinom(n, 1, prob_zero)
+  non_zero_data <- stats::rnorm(sum(!is_zero), mean = mu, sd = sigma)
   data <- rep(0, n)
   data[!is_zero] <- exp(non_zero_data)
   return(data)
@@ -40,12 +38,9 @@ simulate_gscore <- function(n, mu, sigma, prob_zero) {
 #'
 #' @examples
 #' get_true_gscore_median(p = 0.3, mu = 1, sigma = 0.5)
-#'
-#' @import stats
 get_true_gscore_median <- function(p, mu, sigma) {
-  exp(mu + qnorm(max(0.5 - p, 0) / (1 - p)) * sigma)
+  exp(mu + stats::qnorm(max(0.5 - p, 0) / (1 - p)) * sigma)
 }
-
 
 
 #' Variance Estimator for g-score Median Estimate
@@ -60,8 +55,6 @@ get_true_gscore_median <- function(p, mu, sigma) {
 #' @examples
 #' g_scores <- simulate_gscore(n = 100, mu = 1, sigma = 0.5, prob_zero = 0.2)
 #' sd_gscore_median(g_scores)
-#'
-#' @import stats
 sd_gscore_median <- function(x) {
   n <- length(x)
   xx <- sort(x)
@@ -69,7 +62,7 @@ sd_gscore_median <- function(x) {
   cc1 <- cc
   cc1[cc1 == 0] <- 1
   alpha <- sum(choose(n, 0:(cc1 - 1)) * 0.5^(n - 1))
-  z_alpha <- qnorm(1 - alpha / 2)
+  z_alpha <- stats::qnorm(1 - alpha / 2)
   se <- (xx[n - cc1 + 1] - xx[cc1]) / (2 / sqrt(n) + 2 * z_alpha)
 
   return(se)
@@ -107,7 +100,7 @@ sd_gscore_median <- function(x) {
 #'
 #' @import dplyr
 #' @import tidyr
-#' @import stats
+#' @importFrom rlang .data
 eval_gscore_approx_dist <- function(sim_data){
 
   # True median ratio: delta = theta_t / theta_c
@@ -117,10 +110,10 @@ eval_gscore_approx_dist <- function(sim_data){
 
   # Point estimate of log_delta for each run: log_delta_hat = log(theta_t_hat) - log(theta_c_hat)
   median_est_wide <- sim_data$median_est %>%
-    dplyr::filter(arm %in% c("treatment", "control")) %>%
+    dplyr::filter(.data$arm %in% c("treatment", "control")) %>%
     pivot_wider(
-      names_from = arm,
-      values_from = c(median_unadjusted, median_adjusted, median_sd),
+      names_from = .data$arm,
+      values_from = c(.data$median_unadjusted, .data$median_adjusted, .data$median_sd),
       names_sep = "."
     )
   log_delta_hat = log(median_est_wide$median_adjusted.treatment) - log(median_est_wide$median_adjusted.control)
@@ -142,11 +135,11 @@ eval_gscore_approx_dist <- function(sim_data){
   sd_avg = mean(sds)
 
   # Empirical SD of log_delta_hat
-  sd_empirical = sd(log_delta_hat)
+  sd_empirical = stats::sd(log_delta_hat)
 
   # Coverage probability 95%
-  ci = data.frame(cil = log_delta_hat + qnorm(0.025) * sds,
-                  ciu = log_delta_hat + qnorm(0.975) * sds)
+  ci = data.frame(cil = log_delta_hat + stats::qnorm(0.025) * sds,
+                  ciu = log_delta_hat + stats::qnorm(0.975) * sds)
   ci$coverage = ifelse(ci$cil < log_delta & ci$ciu > log_delta, 1, 0)
   cp = mean(ci$coverage)
 

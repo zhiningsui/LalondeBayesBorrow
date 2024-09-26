@@ -20,19 +20,20 @@
 #'
 #' @import dplyr
 #' @import tidyr
-#' @import stats
+#' @importFrom rlang .data
 freq_binary <- function(data) {
   freq <- data %>%
-    group_by(nsim, arm, resp) %>%
+    group_by(.data$nsim, .data$arm, .data$resp) %>%
     summarise(count = n(), .groups = 'drop') %>%
-    complete(nsim, arm, resp, fill = list(count = 0)) %>%
-    group_by(nsim, arm) %>%
+    complete(.data$nsim, .data$arm, .data$resp, fill = list(count = 0)) %>%
+    group_by(.data$nsim, .data$arm) %>%
     mutate(n = sum(count)) %>%
     ungroup() %>%
-    dplyr::filter(resp == 1) %>%
-    group_by(nsim, arm) %>%
-    pivot_wider(names_from = arm, values_from = c(n, count),names_glue = "{arm}.{.value}") %>%
-    select(nsim, ends_with(".n"), ends_with(".count"))
+    dplyr::filter(.data$resp == 1) %>%
+    group_by(.data$nsim, .data$arm) %>%
+    pivot_wider(names_from = .data$arm, values_from = c(.data$n, .data$count),
+                names_glue = "{arm}.{.value}") %>%
+    select(.data$nsim, ends_with(".n"), ends_with(".count"))
 
   return(freq = freq)
 }

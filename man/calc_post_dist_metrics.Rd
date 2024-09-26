@@ -35,5 +35,4 @@ post_inference_result <- posterior_inference(post1, post2, quantiles = c(0.025, 
                          EXP_TRANSFORM = TRUE)
 
 calc_post_dist_metrics("g-score", true_value = 1.2, post_est_ci = post_inference_result)
-
 }

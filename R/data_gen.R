@@ -34,13 +34,13 @@
 #' @import dplyr
 #' @import tidyr
 #' @import parallel
-#' @import data.table
-#' @import stats
+#' @importFrom data.table data.table rbindlist setcolorder
+#' @importFrom rlang := .data
 data_gen_gscore <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NULL, mu_list = NULL, sigma_list = NULL, arm_names = NULL) {
   true_value <- data.frame(arm = arm_names,
                            true_value = mapply(get_true_gscore_median,
                                                prob_list, mu_list, sigma_list)) %>%
-    pivot_wider(names_from = arm, values_from = true_value, names_glue = "{arm}.true_value")
+    pivot_wider(names_from = .data$arm, values_from = .data$true_value, names_glue = "{arm}.true_value")
 
   if (sum(arm_names %in% c("treatment", "control")) >= 2) {
     true_value <- true_value %>%
@@ -70,7 +70,7 @@ data_gen_gscore <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NU
   })
 
   results <- parLapply(cl, 1:nsim, function(nrep) {
-    data_temp <- data.table(
+    data_temp <- data.table::data.table(
       nsim = rep(nrep, each = sum(n_list)),
       id = unlist(lapply(n_list, seq)),
       arm = unlist(as.list(mapply(rep, arm_names, n_list))),
@@ -81,14 +81,14 @@ data_gen_gscore <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NU
     rownames(data_temp) <- NULL
 
     med_temp <- data_temp %>%
-      group_by(arm) %>%
+      group_by(.data$arm) %>%
       summarize(
-        median_unadjusted = median(g_score),
-        median_sd = sd_gscore_median(g_score)
+        median_unadjusted = stats::median(.data$g_score),
+        median_sd = sd_gscore_median(.data$g_score)
       ) %>%
       mutate(
         n = n_list,
-        median_adjusted = ifelse(median_unadjusted == 0, min(data_temp$g_score[data_temp$g_score > 0]) / sqrt(n), median_unadjusted),
+        median_adjusted = ifelse(.data$median_unadjusted == 0, min(data_temp$g_score[data_temp$g_score > 0]) / sqrt(n), .data$median_unadjusted),
         nsim = nrep
       )
 
@@ -135,12 +135,13 @@ data_gen_gscore <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NU
 #' @import dplyr
 #' @import tidyr
 #' @import parallel
-#' @import data.table
-#' @import stats
+#' @importFrom data.table data.table rbindlist setcolorder
+#' @importFrom rlang := .data
 data_gen_binary <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NULL, arm_names = NULL) {
   rate_true <- data.frame(arm = arm_names,
-                           rate_true = unlist(prob_list)) %>%
-      pivot_wider(names_from = arm, values_from = rate_true, names_glue = "{arm}.rate_true")
+                          rate_true = unlist(prob_list)) %>%
+      pivot_wider(names_from = .data$arm, values_from = .data$rate_true,
+                  names_glue = "{arm}.rate_true")
 
   if (sum(arm_names %in% c("treatment", "control")) >= 2) {
     rate_true <- rate_true %>%
@@ -173,8 +174,8 @@ data_gen_binary <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NU
       arm = unlist(as.list(mapply(rep, arm_names, n_list))),
       resp = unlist(as.list(mapply(stats::rbinom, n_list, as.list(rep(1, n_arms)), prob_list)))
     )
-    data_temp[, arm := factor(arm, levels = arm_names)]
-    data_temp
+   data_temp$arm <- factor(data_temp$arm, levels = arm_names)
+   data_temp
   })
 
   stopCluster(cl)

@@ -20,20 +20,22 @@
 #'
 #' @import dplyr
 #' @import tidyr
-#' @import stats
+#' @importFrom rlang .data
 obtain_OC <- function(settings, decisions){
   # Proportion of decisions made based on the posterior probability
   proportion_pr <- decisions %>%
-    group_by(decision_pr) %>%
+    group_by(.data$decision_pr) %>%
     summarise(count_pr = n(), .groups = 'drop') %>%
-    complete(decision_pr = factor(levels(decision_pr)), fill = list(count_pr = 0)) %>%
-    mutate(proportion_pr = count_pr / sum(count_pr, na.rm = TRUE))
+    complete(decision_pr = factor(levels(.data$decision_pr)),
+             fill = list(count_pr = 0)) %>%
+    mutate(proportion_pr = .data$count_pr / sum(.data$count_pr, na.rm = TRUE))
   # Proportion of decisions made based on the credible interval
   proportion_ci <- decisions %>%
-    group_by(decision_ci) %>%
+    group_by(.data$decision_ci) %>%
     summarise(count_ci = n(), .groups = 'drop') %>%
-    complete(decision_ci = factor(levels(decision_ci)), fill = list(count_ci = 0)) %>%
-    mutate(proportion_ci = count_ci / sum(count_ci, na.rm = TRUE))
+    complete(decision_ci = factor(levels(.data$decision_ci)),
+             fill = list(count_ci = 0)) %>%
+    mutate(proportion_ci = .data$count_ci / sum(.data$count_ci, na.rm = TRUE))
 
   OC <- cbind(settings, cbind(proportion_pr, proportion_ci))
   return(OC)

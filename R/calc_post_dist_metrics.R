@@ -26,8 +26,6 @@
 #'                          EXP_TRANSFORM = TRUE)
 #'
 #' calc_post_dist_metrics("g-score", true_value = 1.2, post_est_ci = post_inference_result)
-#'
-#' @import stats
 calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci) {
   if (endpoint == "g-score") {
     # Parameter of interest: log_delta = log(theta_t/theta_c)
@@ -49,7 +47,7 @@ calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci) {
     sd_avg <- mean(sds)
 
     # Empirical SD of log_delta_hat
-    sd_empirical <- sd(log_delta_hat)
+    sd_empirical <- stats::sd(log_delta_hat)
 
     # Coverage probability
     ci <- data.frame(cil = log(post_est_ci$compare_ci_l),
@@ -80,7 +78,7 @@ calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci) {
     sd_avg <- mean(sds)
 
     # Empirical SD of delta_hat
-    sd_empirical <- sd(delta_hat)
+    sd_empirical <- stats::sd(delta_hat)
 
     # Coverage probability
     ci <- data.frame(cil = post_est_ci$compare_ci_l,

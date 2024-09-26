@@ -18,5 +18,4 @@ This function calculates the variance estimator for the median estimate of g-sco
 \examples{
 g_scores <- simulate_gscore(n = 100, mu = 1, sigma = 0.5, prob_zero = 0.2)
 sd_gscore_median(g_scores)
-
 }

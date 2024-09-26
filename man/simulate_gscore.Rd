@@ -28,5 +28,4 @@ log(G) | G > 0 ~ N(mu, sigma^2)
 }
 \examples{
 simulate_gscore(n = 100, mu = 1, sigma = 0.5, prob_zero = 0.2)
-
 }
