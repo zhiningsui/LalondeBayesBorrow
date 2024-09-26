@@ -1,0 +1,67 @@
+#' Performing posterior inference
+#'
+#' This function calculates the posterior estimates and credible intervals for individual arms and the treatment effect.
+#' If the second posterior distribution if not given, only find the posterior estimates and credible interval for the first posterior distribution.
+#'
+#' @param post1 A RBesT mixture distribution object.
+#' @param post2 A RBesT mixture distribution object. Default NULL.
+#' @param quantiles A vector. Upper and lower quantiles for the credible interval
+#' @param EXP_TRANSFORM A boolean. Whether or not exponentiation should be applied on the endpoint and the treatment effect
+#'
+#' @return A dataframe of one row including the posterior means, posterior standard deviation, and the upper and lower bounds for the credible interval.
+#' @export
+#'
+#' @examples
+posterior_inference <- function(post1, post2 = NULL, quantiles, EXP_TRANSFORM = FALSE) {
+
+  calculate_post <- function(post, EXP_TRANSFORM = FALSE) {
+    est <- summary(post)["mean"]
+    sd <- summary(post)["sd"]
+    conf <- qmix(mix = post, quantiles)
+    if (EXP_TRANSFORM) {
+      est <- exp(est)
+      conf <- exp(conf)
+    }
+    return(list(est = est, conf = conf, sd = sd))
+  }
+
+  SINGLE_ARM <- is.null(post2)
+  # EXP_TRANSFORM <- (endpoint == "g-score")
+
+  result1 <- calculate_post(post1, EXP_TRANSFORM)
+
+  if (!SINGLE_ARM){
+    result2 <- calculate_post(post2, EXP_TRANSFORM)
+
+    est_compare <- if (EXP_TRANSFORM) {
+      result1$est / result2$est
+    } else {
+      result1$est - result2$est
+    }
+
+    conf_compare <- if (EXP_TRANSFORM) {
+      exp(qmixdiff(post1, post2, quantiles))
+    } else {
+      qmixdiff(post1, post2, quantiles)
+    }
+
+    sd_compare <- sqrt((result1$sd)^2 +(result2$sd)^2)
+
+  }
+
+  rslt <- data.frame(
+    est1 = result1$est,
+    sd1 = result1$sd,
+    ci1_l = result1$conf[1], ci1_u = result1$conf[2],
+    est2 = if (!SINGLE_ARM) result2$est else NA,
+    sd2 = if (!SINGLE_ARM) result2$sd else NA,
+    ci2_l = if (!SINGLE_ARM) result2$conf[1] else NA,
+    ci2_u = if (!SINGLE_ARM) result2$conf[2] else NA,
+    est_compare = if (!SINGLE_ARM) est_compare else NA,
+    sd_compare = if (!SINGLE_ARM) sd_compare else NA,
+    compare_ci_l = if (!SINGLE_ARM) conf_compare[1] else NA,
+    compare_ci_u = if (!SINGLE_ARM) conf_compare[2] else NA
+  )
+
+  return(rslt)
+}

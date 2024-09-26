@@ -1,0 +1,27 @@
+{
+    "id": "12E935C0",
+    "path": "~/GitHub/LalondeBayesBorrow/R/calc_post_dist_metrics.R",
+    "project_path": "R/calc_post_dist_metrics.R",
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1727326424506.0,
+    "source_on_save": false,
+    "relative_order": 7,
+    "properties": {
+        "tempName": "Untitled1",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "52,42",
+        "scrollLine": "38"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1727331573,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1727331573928,
+    "read_only": false,
+    "read_only_alternatives": []
+}

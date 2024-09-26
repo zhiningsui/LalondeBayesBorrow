@@ -1,0 +1,103 @@
+#' Obtaining the posterior distribution
+#'
+#' This function obtains the posterior distribution for continuous or binary endpoints for one arm.
+#'
+#' @param endpoint A string. Type of endpoint, either "continuous" or "binary"
+#' @param current A vector. Current trial data. For a continuous endpoint, the names for the vector should include "n" (the number of patients), "mu_hat" (mean of the normal sampling distribution), and "s" (standard deviation of the normal sampling distribution). For a binary endpoint, the names for the vector should include "n" (the number of patients) and "count" (the number of responses)
+#' @param historical A vector. Historical trial data. Same format as current vector
+#' @param delta A scalar. Clinically significant difference for SAM prior
+#' @param w A scalar. Initial weight assigned to the informative component of the mixture prior. Set to 0 if no borrowing; Set to NULL if SAM prior
+#' @param a A scalar. Alpha parameter in the (mixture) beta prior for binary endpoint
+#' @param b A scalar. Beta parameter in the (mixture) beta prior for binary endpoint
+#'
+#' @return A list of posterior distribution parameters
+#' @export
+#'
+#' @examples
+posterior_distribution <- function(endpoint, current, historical = NULL, delta = log(0.85), w = NULL, a = NULL, b = NULL) {
+  w.input <- w
+
+  if (is.null(historical)){
+    if (is.null(w.input) | w.input != 0 ) stop("No historical data provided. Cannot do borrowing with w not equal to zero.")
+    historical <- current; cat("NULL HISTORICAL")
+  }
+
+  if (endpoint == "continuous") {
+
+    if(!("n" %in% names(historical) & "mu_hat" %in% names(historical) & "s" %in% names(historical))) {
+      stop("posterior_distribution(): Current data and/or historical data do not have estimate and sd_estimate columns.")
+    }
+
+    a0 <- 1 / historical["n"]
+    y <- current["mu_hat"]
+    s <- current["s"]
+    yh <- historical["mu_hat"]
+    sh <- historical["s"]
+
+    if (exists("w.input") && !is.null(w.input) && w.input == 0) {
+      sh = 100
+      mu2 <- (sh^2 * y) / (s^2 + sh^2)
+      sig2 <- sqrt((sh^2 * s^2) / (sh^2 + s^2))
+
+      post = list(
+        w = 0,
+        mu1 = NA, sigma1 = NA,
+        mu2 = unname(mu2), sigma2 = unname(sig2)
+      )
+    } else {
+      if (is.null(w.input)) {
+        R <- exp(-((y - yh) / s)^2 / 2 - max(-((y - yh - delta) / s)^2 / 2, -((y - yh + delta) / s)^2 / 2))
+        w <- R / (1 + R)
+      }
+      mu1 <- (s^2 * yh + sh^2 * y) / (s^2 + sh^2)
+      sig1 <- sqrt(s^2 * sh^2 / (s^2 + sh^2))
+      mu2 <- (s^2 * yh + sh^2 * y / a0) / (s^2 + sh^2 / a0)
+      sig2 <- sqrt(s^2 * sh^2 / a0 / (s^2 + sh^2 / a0))
+      part1 <- sig1 / (s * sh) * exp(0.5 * (mu1^2 / sig1^2 - y^2 / s^2 - yh^2 / sh^2))
+      part2 <- sig2 / (s * sh / sqrt(a0)) * exp(0.5 * (mu2^2 / sig2^2 - y^2 / s^2 - yh^2 / (sh^2 / a0)))
+      ws <- w * part1 / (w * part1 + (1 - w) * part2)
+      post = list(
+        w = unname(ws),
+        mu1 = unname(mu1), sigma1 = unname(sig1),
+        mu2 = unname(mu2), sigma2 = unname(sig2)
+      )
+    }
+
+    return(list(w_prior = unname(w), post = post))
+
+  } else if (endpoint == "binary") {
+    x <- as.numeric(current["count"])
+    n <- as.numeric(current["n"])
+    xh <- as.numeric(historical["count"])
+    nh <- as.numeric(historical["n"])
+
+    a2 <- a + x
+    b2 <- b + n - x
+
+    if (exists("w.input") && !is.null(w.input) && w.input == 0) {
+      post = list(
+        w = 0,
+        a1 = NA, b1 = NA,
+        a2 = unname(a2), b2 = unname(b2)
+      )
+    } else {
+      if (is.null(w.input)) {
+        thetah <- (a + xh) / (a + b + nh)
+        R <- thetah^x * (1 - thetah)^(n - x) / max((thetah + delta)^x * (1 - thetah - delta)^(n - x), (thetah - delta)^x * (1 - thetah + delta)^(n - x))
+        w <- R / (1 + R)
+      }
+      a1 <- a + xh + x
+      b1 <- b + nh + n - xh - x
+      z0 <- beta(a2, b2) / beta(a, b)
+      z1 <- beta(a1, b1) / beta(a + xh, b + nh - xh)
+      ws <- w * z1 / (w * z1 + (1 - w) * z0)
+
+      post = list(
+        w = unname(ws),
+        a1 = unname(a1), b1 = unname(b1),
+        a2 = unname(a2), b2 = unname(b2)
+      )
+    }
+    return(list(w_prior = unname(w), post = post))
+  }
+}

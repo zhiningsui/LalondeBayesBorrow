@@ -1,0 +1,1187 @@
+# -----------------------------------------------------------------------------
+# Date last modified: August 1, 2024 by Zhining Sui
+# Program: bayesian_lalonde_framework.R
+# Purpose: Implement the Bayesian Lalonde Framework for clinical trial analysis.
+# -----------------------------------------------------------------------------
+# Data Inputs:
+# - Simulation parameters for generating clinical trial data.
+# - Prior parameters for Bayesian analysis.
+#
+# Data Outputs:
+# - Simulation results and decisions saved as CSV files.
+# -----------------------------------------------------------------------------
+
+# Load necessary libraries
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(RBesT)
+library(BayesianHybridDesign)
+library(parallel)
+library(data.table)
+
+# Define functions --------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Estimate the variance of the adjusted sample median.
+# Args:
+#     x (numeric vector): Sample data.
+# Returns:
+#     se (numeric): Standard error of the adjusted sample median.
+# -----------------------------------------------------------------------------
+sd_gscore_median <- function(x) {
+  n <- length(x)
+  xx <- sort(x)
+  cc <- round((n + 1) / 2 - 1.96 * sqrt(n / 4))
+  cc1 <- cc
+  cc1[cc1 == 0] <- 1
+  alpha <- sum(choose(n, 0:(cc1 - 1)) * 0.5^(n - 1))
+  z_alpha <- qnorm(1 - alpha / 2)
+  se <- (xx[n - cc1 + 1] - xx[cc1]) / (1 / sqrt(n) + 2 * z_alpha)
+
+  intermediate_df <- data.frame(n = n, c = cc, c1 = cc1, alpha = alpha,
+                                g1 = xx[n-cc1+1], g2 = xx[cc1], numerator = (xx[n-cc1+1]-xx[cc1]))
+
+  return(list(se=se, intermediate = intermediate_df))
+}
+
+# -----------------------------------------------------------------------------
+# Generate g-score by simulating from a normal distribution with added zero inflation.
+# Args:
+#     n (integer): Number of samples to generate.
+#     mu (numeric): Mean of the non-zero data.
+#     sigma (numeric): Standard deviation of the non-zero data.
+#     prob_zero (numeric): Probability of a zero value.
+# Returns:
+#     data (numeric vector): Generated g-score data.
+# -----------------------------------------------------------------------------
+simulate_gscore <- function(n, mu, sigma, prob_zero) {
+  is_zero <- rbinom(n, 1, prob_zero)
+  non_zero_data <- rnorm(sum(!is_zero), mean = mu, sd = sigma)
+  data <- rep(0, n)
+  data[!is_zero] <- exp(non_zero_data)
+  return(data)
+}
+
+# -----------------------------------------------------------------------------
+# Calculate frequencies for binary endpoints (0/1) in clinical trial data.
+# Args:
+#     data (data.frame): Simulated clinical trial data.
+#     n_list (numeric vector): List of sample sizes for each arm.
+# Returns:
+#     list: Contains two data.frames with frequency counts.
+# -----------------------------------------------------------------------------
+freq_binary <- function(data, n_list) {
+  data_2 <- data %>%
+    group_by(nsim, arm, resp) %>%
+    summarise(count = n(), .groups = 'drop') %>%
+    ungroup() %>%
+    complete(nsim, arm, resp, fill = list(count = 0)) %>%
+    mutate(n = case_when(TRUE ~ n_list[as.integer(factor(arm, levels = levels(data$arm)))]))
+
+  data_3 <- data_2 %>%
+    filter(resp == 1) %>%
+    group_by(nsim, arm) %>%
+    summarise(n = unique(n), count = sum(count)) %>%
+    pivot_wider(names_from = arm, values_from = c(n, count), names_glue = "{.value}.{arm}") %>%
+    select(nsim, starts_with("n"), starts_with("count"))
+
+  return(list(data_2 = data_2, data_3 = data_3))
+}
+
+# -----------------------------------------------------------------------------
+# Simulate clinical trial data for multiple arms.
+# Args:
+#     endpoint (character): Type of endpoint ('g-score', 'OR').
+#     n_arms (integer): Number of arms of the trial.
+#     nsim (integer): Number of simulations.
+#     n_list (numeric vector): Sample sizes for each arm.
+#     prob_list (numeric vector): Binomial probabilities for G=0 in g-score simulation; or Response probabilities in binary endpoint simulation.
+#     mu_list (numeric vector): Mean values of the log-normal distribution for (G|G>0) in g-score simulation.
+#     sigma_list (numeric vector): Standard deviation values of the log-normal distribution for (G|G>0) in g-score simulation.
+#     arm_names (character vector, optional): Names of the treatment arms.
+# Returns:
+#     list: Contains simulated data and summary statistics.
+# -----------------------------------------------------------------------------
+data_gen <- function(endpoint = "g-score", n_arms = 2, nsim = 10, n_list = NULL, prob_list = NULL, mu_list = NULL, sigma_list = NULL, arm_names = NULL) {
+  if (is.null(arm_names)) {
+    arm_names <- 1:n_arms
+  }
+
+  if (endpoint == "g-score") {
+    median_true <- data.frame(arm = arm_names,
+                              median_true = mapply(function(p, mu, sigma) {
+                                exp(mu + qnorm(max(0.5 - p, 0) / (1 - p)) * sigma)
+                              }, prob_list, mu_list, sigma_list)) %>%
+      pivot_wider(names_from = arm, values_from = median_true, names_glue = "{arm}.median_true")
+
+    if (sum(arm_names %in% c("treatment", "control")) >= 2) {
+      median_true <- median_true %>%
+        mutate(compare_true = !!sym(paste0(arm_names[arm_names == "treatment"], ".median_true")) / !!sym(paste0(arm_names[arm_names == "control"], ".median_true")))
+    } else {
+      median_true <- median_true %>%
+        mutate(compare_true = NA)
+    }
+
+    cl <- makeCluster(detectCores() - 1)
+
+    required_vars <- c("n_list", "mu_list", "sigma_list", "prob_list", "arm_names",
+                       "simulate_gscore", "sd_gscore_median")
+
+    clusterExport(cl, required_vars, envir = environment())
+    clusterEvalQ(cl, {
+      library(dplyr)
+      library(tidyr)
+      library(data.table)
+    })
+
+    results <- parLapply(cl, 1:nsim, function(nrep) {
+      # set.seed(20240702 + 10000 * nrep)
+      data_temp <- data.table(
+        nsim = rep(nrep, each = sum(n_list)),
+        id = unlist(lapply(n_list, seq)),
+        arm = unlist(as.list(mapply(rep, arm_names, n_list))),
+        g_score = unlist(as.list(mapply(simulate_gscore, n_list, mu_list, sigma_list, prob_list)))
+      )
+
+      data_temp$arm <- factor(data_temp$arm, levels = arm_names)
+      rownames(data_temp) <- NULL
+
+      med_temp <- data_temp %>%
+        group_by(arm) %>%
+        summarize(
+          median_unadjusted = median(g_score),
+          median_sd = sd_gscore_median(g_score)$se
+        ) %>%
+        mutate(
+          n = n_list,
+          median_adjusted = ifelse(median_unadjusted == 0, min(data_temp$g_score[data_temp$g_score > 0]) / sqrt(n), median_unadjusted),
+          nsim = nrep
+        )
+
+      # Applying the function and extracting the intermediate result
+      sd_intermediate <- data_temp %>%
+        group_by(arm) %>%
+        summarise(intermediate = list(sd_gscore_median(g_score)$intermediate))
+      sd_intermediate1 <- do.call(rbind, sd_intermediate$intermediate)
+      colnames(sd_intermediate1) <- paste0(colnames(sd_intermediate1), "_intermediate")
+      sd_intermediate1 <- cbind(arm = sd_intermediate$arm, sd_intermediate1)
+
+
+      list(data = data_temp, median = med_temp, sd_intermediate = sd_intermediate1)
+    })
+
+    stopCluster(cl)
+
+    data <- rbindlist(lapply(results, "[[", "data"))
+    g_median <- rbindlist(lapply(results, "[[", "median"))
+    g_sd_intermediate <- rbindlist(lapply(results, "[[", "sd_intermediate"))
+    setcolorder(g_median, c("nsim", "arm", "n", "median_unadjusted", "median_adjusted", "median_sd"))
+    return(list(data = data, true_value = median_true, median_est = g_median, g_sd_intermediate = g_sd_intermediate))
+
+  } else if (endpoint == "OR") {
+
+    ORR_true <- data.frame(arm = arm_names,
+                           rate_true = unlist(prob_list)) %>%
+      pivot_wider(names_from = arm, values_from = rate_true, names_glue = "{arm}.rate_true")
+
+    if (sum(arm_names %in% c("treatment", "control")) >= 2) {
+      ORR_true <- ORR_true %>%
+        mutate(compare_true = !!sym(paste0(arm_names[arm_names == "treatment"], ".rate_true")) - !!sym(paste0(arm_names[arm_names == "control"], ".rate_true")))
+    } else {
+      ORR_true <- ORR_true %>%
+        mutate(compare_true = NA)
+    }
+
+    cl <- makeCluster(detectCores() - 1)
+    clusterExport(cl, list("n_list", "prob_list", "arm_names", "n_arms"), envir = environment())
+    clusterEvalQ(cl, {
+      library(dplyr)
+      library(tidyr)
+      library(data.table)
+    })
+
+    results <- parLapply(cl, 1:nsim, function(nrep) {
+      # set.seed(20180418 + 10000 * nrep)
+      data_temp <- data.table(
+        nsim = rep(nrep, each = sum(n_list)),
+        id = unlist(mapply(seq, n_list)),
+        arm = unlist(mapply(rep, arm_names, n_list)),
+        resp = unlist(mapply(rbinom, n_list, as.list(rep(1, n_arms)), prob_list))
+      )
+      data_temp[, arm := factor(arm, levels = arm_names)]
+      data_temp
+    })
+
+    stopCluster(cl)
+
+    data <- rbindlist(results)
+    freq <- freq_binary(data, n_list)
+
+    return(list(data = data, true_value = ORR_true, freq = freq$data_2, freq_sum = freq$data_3))
+  }
+}
+
+
+
+# -----------------------------------------------------------------------------
+# Find the posterior distribution for the median g-score or ORR of one arm.
+# Args:
+#     endpoint (character): Type of endpoint ('g-score', 'OR').
+#     current (numeric vector): Current trial data.
+#     historical (numeric vector, optional): Historical trial data.
+#     delta (numeric): Clinically significant difference (CSD) in treatment effect, as the threshold for prior-data conflict.
+#     w, a, b (numeric, optional): Prior parameters.
+# Returns:
+#     list: Posterior distribution parameters.
+# -----------------------------------------------------------------------------
+posterior_distribution <- function(endpoint, current, historical = NULL, delta = log(0.85), w = NULL, a = NULL, b = NULL) {
+  if (is.null(historical)){
+    historical <- current; cat("NULL HISTORICAL")
+  }
+
+  w.input <- w
+
+  if (endpoint == "g-score") {
+    a0 <- 1 / historical["n"]
+    y <- log(current["median_adjusted"])
+    s <- current["median_sd"] / current["median_adjusted"]
+    yh <- log(historical["median_adjusted"])
+    sh <- historical["median_sd"] / historical["median_adjusted"]
+
+    if (is.null(w)) {
+      R <- exp(-((y - yh) / s)^2 / 2 - max(-((y - yh - delta) / s)^2 / 2, -((y - yh + delta) / s)^2 / 2))
+      w <- R / (1 + R)
+    }
+
+    mu1 <- (s^2 * yh + sh^2 * y) / (s^2 + sh^2)
+    sig1 <- sqrt(s^2 * sh^2 / (s^2 + sh^2))
+    mu2 <- (s^2 * yh + sh^2 * y / a0) / (s^2 + sh^2 / a0)
+    sig2 <- sqrt(s^2 * sh^2 / a0 / (s^2 + sh^2 / a0))
+    part1 <- sig1 / (s * sh) * exp(0.5 * (mu1^2 / sig1^2 - y^2 / s^2 - yh^2 / sh^2))
+    part2 <- sig2 / (s * sh / sqrt(a0)) * exp(0.5 * (mu2^2 / sig2^2 - y^2 / s^2 - yh^2 / (sh^2 / a0)))
+    ws <- w * part1 / (w * part1 + (1 - w) * part2)
+
+    if (exists("w.input") && !is.null(w.input) && w.input == 0) {
+      post = list(
+        w = 0,
+        mu1 = NA, sigma1 = NA,
+        mu2 = unname(mu2), sigma2 = unname(sig2)
+      )
+    } else {
+      post = list(
+        w = unname(ws),
+        mu1 = unname(mu1), sigma1 = unname(sig1),
+        mu2 = unname(mu2), sigma2 = unname(sig2)
+        )
+    }
+
+    return(list(w_prior = unname(w), post = post))
+
+  } else if (endpoint == "OR") {
+    x <- as.numeric(current["count"])
+    n <- as.numeric(current["n"])
+    xh <- as.numeric(historical["count"])
+    nh <- as.numeric(historical["n"])
+
+    if (is.null(w)) {
+      thetah <- (a + xh) / (a + b + nh)
+      R <- thetah^x * (1 - thetah)^(n - x) / max((thetah + delta)^x * (1 - thetah - delta)^(n - x), (thetah - delta)^x * (1 - thetah + delta)^(n - x))
+      w <- R / (1 + R)
+    }
+
+    a2 <- a + x
+    b2 <- b + n - x
+
+    if (exists("w.input") && !is.null(w.input) && w.input == 0) {
+      post = list(
+        w = 0,
+        a1 = NA, b1 = NA,
+        a2 = unname(a2), b2 = unname(b2)
+      )
+    } else {
+      a1 <- a + xh + x
+      b1 <- b + nh + n - xh - x
+      z0 <- beta(a2, b2) / beta(a, b)
+      z1 <- beta(a1, b1) / beta(a + xh, b + nh - xh)
+      ws <- w * z1 / (w * z1 + (1 - w) * z0)
+
+      post = list(
+        w = unname(ws),
+        a1 = unname(a1), b1 = unname(b1),
+        a2 = unname(a2), b2 = unname(b2)
+      )
+    }
+
+    return(list(w_prior = unname(w), post = post))
+  }
+}
+
+convert_RBesT_mix <- function(post, endpoint){
+  names(post) <- sapply(strsplit(gsub("_post", "", names(post)), "\\."), "[[", 2)
+  if (endpoint == "g-score") {
+    if(!is.data.frame(post)) post <- as.data.frame(t(post))
+    # Define the normal mixture distributions using RBesT
+    if (post$w == 0) {
+      post = mixnorm(c(1-unname(post$w), unname(post$mu2), unname(post$sigma2)))
+    } else if (post$w == 1){
+      post = mixnorm(c(unname(post$w), unname(post$mu1), unname(post$sigma1)))
+    }
+    else {
+      post = mixnorm(c(unname(post$w), unname(post$mu1), unname(post$sigma1)),
+                     c(1-unname(post$w), unname(post$mu2), unname(post$sigma2)))
+    }
+  } else if (endpoint == "OR") {
+    # Define the beta mixture distributions using RBesT
+    if (post$w == 0) {
+      post = mixbeta(c(1-unname(post$w), unname(post$a2), unname(post$b2)))
+    } else if (post$w == 1){
+      post = mixbeta(c(unname(post$w), unname(post$a1), unname(post$b1)))
+    }else {
+      post = mixbeta(c(unname(post$w), unname(post$a1), unname(post$b1)),
+                     c(1-unname(post$w), unname(post$a2), unname(post$b2)))
+    }
+  }
+  return(post)
+}
+
+# -----------------------------------------------------------------------------
+# Obtain posterior estimates and credible intervals for endpoints in one arm and differences between two arms.
+# Args:
+#     endpoint (character): Type of endpoint ('g-score', 'OR').
+#     post1, post2 (list): Posterior distribution parameters for two arms.
+#     quantiles (numeric vector): Quantiles for credible intervals.
+# Returns:
+#     data.frame: Posterior estimates and credible intervals.
+# -----------------------------------------------------------------------------
+posterior_inference <- function(endpoint, post1, post2 = NULL, quantiles) {
+
+  calculate_post <- function(post, EXP_TRANSFORM = FALSE) {
+    est <- summary(post)["mean"]
+    sd <- summary(post)["sd"]
+    conf <- qmix(mix = post, quantiles)
+    if (EXP_TRANSFORM) {
+      est <- exp(est)
+      conf <- exp(conf)
+    }
+    return(list(est = est, conf = conf, sd = sd))
+  }
+
+  SINGLE_ARM <- is.null(post2)
+  EXP_TRANSFORM <- (endpoint == "g-score")
+
+  result1 <- calculate_post(post1, EXP_TRANSFORM)
+
+  if (!SINGLE_ARM){
+    result2 <- calculate_post(post2, EXP_TRANSFORM)
+
+    est_compare <- if (EXP_TRANSFORM) {
+      result1$est / result2$est
+    } else {
+      result1$est - result2$est
+    }
+
+    conf_compare <- if (EXP_TRANSFORM) {
+      exp(qmixdiff(post1, post2, quantiles))
+    } else {
+      qmixdiff(post1, post2, quantiles)
+    }
+
+    sd_compare <- sqrt((result1$sd)^2 +(result2$sd)^2)
+
+  }
+
+  rslt <- data.frame(
+    est1 = result1$est,
+    sd1 = result1$sd,
+    ci1_l = result1$conf[1], ci1_u = result1$conf[2],
+    est2 = if (!SINGLE_ARM) result2$est else NA,
+    sd2 = if (!SINGLE_ARM) result2$sd else NA,
+    ci2_l = if (!SINGLE_ARM) result2$conf[1] else NA,
+    ci2_u = if (!SINGLE_ARM) result2$conf[2] else NA,
+    est_compare = if (!SINGLE_ARM) est_compare else NA,
+    sd_compare = if (!SINGLE_ARM) sd_compare else NA,
+    compare_ci_l = if (!SINGLE_ARM) conf_compare[1] else NA,
+    compare_ci_u = if (!SINGLE_ARM) conf_compare[2] else NA
+  )
+
+  return(rslt)
+}
+
+# -----------------------------------------------------------------------------
+# Calculate posterior probabilities for certain ranges of g-score median or ORR or median ratio or ORR difference.
+# Args:
+#     endpoint (character): Type of endpoint ('g-score', 'OR').
+#     post1, post2 (list): Posterior distribution parameters for one or two arms.
+#     value (numeric): Threshold value.
+#     range_type (character): Type of range ('greater', 'less', 'between').
+#     value2 (numeric, optional): Upper threshold for 'between' range.
+# Returns:
+#     numeric: Posterior probability for the specified range.
+# -----------------------------------------------------------------------------
+posterior_prob <- function(post1, value, post2 = NULL, range_type = c("greater", "less", "between"), value2 = NULL) {
+
+  if (is.null(post2)) {
+    if (range_type == "greater") {
+      return(pmix(post1, value, FALSE)) # Pr(post1 > value)
+    } else if (range_type == "less") {
+      return(pmix(post1, value))
+    } else if (range_type == "between") {
+      if (is.null(value2)) stop("value2 must be provided for range_type 'between'")
+      return(pmix(post1, value2) - pmix(post1, value))
+    }
+  } else {
+    if (range_type == "greater") {
+      return(pmixdiff(post1, post2, value, FALSE)) # Pr( post1 - post2 > value)
+    } else if (range_type == "less") {
+      return(pmixdiff(post1, post2, value)) # Pr( post1 - post2 < value)
+    } else if (range_type == "between") {
+      if (is.null(value2)) stop("value2 must be provided for range_type 'between'")
+      return(pmixdiff(post1, post2, value2) - pmixdiff(post1, post2, value)) # Pr( value2 > post1 - post2 > value)
+    }
+  }
+}
+
+
+# -----------------------------------------------------------------------------
+# Implement the Bayesian Lalonde Framework for clinical trial analysis.
+# Args:
+#     endpoint (character): Type of endpoint ('g-score', 'OR').
+#     data (data.frame): Simulated clinical trial data.
+#     prior_params (list): Prior parameters for Bayesian analysis.
+#     lrv, tv (numeric): Lower and target values for decision-making.
+#     fgr, fsr (numeric): False go and false stop rates.
+#     trt_name, ctrl_name (character): Names of the treatment and control arms.
+#     trt_name_h, ctrl_name_h (character, optional): Names of historical treatment and control arms.
+# Returns:
+#     data.frame: Inference and decision results for each simulation.
+# -----------------------------------------------------------------------------
+bayesian_lalonde_decision <- function(endpoint, data, prior_params, lrv, tv, fgr, fsr, arm_names, true_value,
+                                       posterior_infer = TRUE, Lalonde_decision = TRUE) {
+  nsims = unique(data$nsim)
+  trt_name <- arm_names["treatment"]
+  ctrl_name <- arm_names["control"]
+  SINGLE_ARM <- (is.na(trt_name) || is.na(ctrl_name))
+
+
+  get_posterior_params <- function(current, historical, endpoint, prior_params, arm) {
+    names(current) <- sapply(strsplit(names(current), "\\."), "[[", 2)
+    names(historical) <- sapply(strsplit(names(historical), "\\."), "[[", 2)
+
+    if (endpoint == "g-score") {
+      if (!is.null(historical) && historical$median_sd == 0) historical$median_sd <- 0.000001
+      if (current$median_sd == 0) current$median_sd <- 0.000001
+
+      names(current) <- names(historical) <- c("estimate", "sd_estimate")
+    }
+
+
+    posterior_distribution(endpoint, current = current, historical = historical,
+                           delta = prior_params[[paste0(arm, ".delta")]],
+                           w = prior_params[[paste0(arm, ".w")]],
+                           a = prior_params[[paste0(arm, ".a")]],
+                           b = prior_params[[paste0(arm, ".b")]])
+  }
+
+  get_all_functions <- function(env = environment()) {
+    all_objects <- ls(env)
+    functions <- sapply(all_objects, function(obj_name) is.function(get(obj_name, envir = env)))
+    return(names(functions)[functions])
+  }
+
+
+  cl <- makeCluster(detectCores() - 1)
+  required_vars <- c("endpoint", "data", "lrv", "tv", "fgr", "fsr", "arm_names", "true_value",
+                     "posterior_infer", "Lalonde_decision", "prior_params")
+  required_funcs <- c(get_all_functions(environment()), get_all_functions(globalenv()))
+  clusterExport(cl, c(required_vars, required_funcs), envir = environment())
+  clusterEvalQ(cl, {
+    library(dplyr)
+    library(tidyr)
+    library(purrr)
+    library(RBesT)
+    library(BayesianHybridDesign)
+    library(parallel)
+    library(data.table)
+  })
+
+  post_params <- if (SINGLE_ARM) {
+    arm <- c(trt_name, ctrl_name)[!is.na(c(trt_name, ctrl_name))]
+    arm_suffix <- ifelse(names(name) == "control", "ctrl", "trt")
+
+    parLapply(cl, nsims, function(nrep) {
+
+      historical <- if (any(names(arm_names) == paste0(name, "_h"))) data[data$nsim==nrep, startsWith(names(data), paste0(name, "_h."))] else NULL
+      current <- data[data$nsim==nrep, startsWith(names(data), paste0(name, "."))]
+
+      post_c <- get_posterior_params(current, historical, endpoint, prior_params, arm)
+
+      post_params_i <- unlist(post_c$post)
+      names(post_params_i) <- paste0(name, ".", names(post_params_i), "_post")
+
+      prior_ws <- post_c$w_prior
+      names(prior_ws) <- paste0(name, ".w_prior")
+
+      ess <- obtain_ess(post_params_i, arm, current)
+      names(ess) <- paste0(name, ".ess_post")
+
+      borrowing_degree <- (ess - current_ctrl$control.n) / ess
+      names(borrowing_degree) <- paste0(name, ".borrowing_degree")
+
+      c(prior_ws, post_params_i, ess, borrowing_degree)
+    })
+  } else {
+    parLapply(cl, nsims, function(nrep) {
+      historical_ctrl <- if (any(names(arm_names) == "control_h")) data[data$nsim==nrep, startsWith(names(data), "control_h.")] else NULL
+      historical_trt <- if (any(names(arm_names) == "treatment_h")) data[data$nsim==nrep, startsWith(names(data), "treatment_h.")]  else historical_ctrl
+      current_ctrl <- data[data$nsim==nrep, startsWith(names(data), "control.")]
+      current_trt <- data[data$nsim==nrep, startsWith(names(data), "treatment.")]
+
+      post_c <- get_posterior_params(current = current_ctrl, historical = historical_ctrl, endpoint, prior_params, arm = "control")
+      post_t <- get_posterior_params(current = current_trt, historical = historical_trt, endpoint, prior_params, arm = "treatment")
+
+      post_params_i <- c(unlist(post_t$post), unlist(post_c$post))
+      names(post_params_i) <- c(paste0("treatment.", names(post_t$post), "_post"), paste0("control.", names(post_c$post), "_post"))
+
+      prior_ws <- c(post_t$w_prior, post_c$w_prior)
+      names(prior_ws) <- c("treatment.w_prior", "control.w_prior")
+
+      # ess_ctrl <- obtain_ess(post_params_i, "control", current_ctrl)
+      # ess_trt <- obtain_ess(post_params_i, "treatment", current_trt)
+      #
+      # borrowing_degree_ctrl <- (ess_ctrl - current_ctrl$control.n) / ess_ctrl
+      # borrowing_degree_trt <- (ess_trt - current_trt$treatment.n)/ ess_trt
+      #
+      # c(prior_ws, post_params_i, control.ess_post = ess_ctrl, treatment.ess_post = ess_trt, control.borrowing_degree = borrowing_degree_ctrl, treatment.borrowing_degree = borrowing_degree_trt)
+
+      c(prior_ws, post_params_i)
+    })
+  }
+
+  stopCluster(cl)
+  post_params <- bind_rows(post_params)
+
+
+  post_inference <- NULL
+  post_prob <- NULL
+  post_est_ci <- NULL
+  post_dist_eval <- NULL
+
+  cat("Start evaluating the posterior distribution (bias, standard error, 95% coverage probability).\n")
+  if (posterior_infer) {cat("Start obtaining posterior inference (credible intervals and posterior probabilities).\n")}
+  for (nrep in nsims) {
+    p <- post_params[nrep, ]
+    post_t_mix <- convert_RBesT_mix(post = p[startsWith(names(p), "treatment.") & endsWith(names(p), "_post")],
+                                    endpoint = endpoint)
+    post_c_mix <- convert_RBesT_mix(post =p[startsWith(names(p), "control.") & endsWith(names(p), "_post")],
+                                    endpoint = endpoint)
+    post_eval <- posterior_inference(endpoint, post1 = post_t_mix, post2 = post_c_mix,
+                                     quantiles = c(0.025, 0.975))
+
+    if (posterior_infer) {
+      quantiles <- if (lrv < tv) c(low = fgr, upper = 1 - fsr) else c(low = fsr, upper = 1 - fgr)
+      post_est_ci <- bind_rows(post_est_ci, posterior_inference(endpoint,
+                                                                post1 = post_t_mix, post2 = post_c_mix,
+                                                                quantiles = quantiles))
+
+      lrv_adj <- if (endpoint == "g-score") log(lrv) else lrv
+      tv_adj <- if (endpoint == "g-score") log(tv) else tv
+
+      pr_m <- posterior_prob(post_t_mix, lrv_adj, post_c_mix, range_type = ifelse(lrv < tv, "less", "greater"))
+      pr_l <- posterior_prob(post_t_mix, ifelse(lrv < tv, lrv_adj, tv_adj), post_c_mix, range_type = "between",
+                             value2 = ifelse(lrv < tv, tv_adj, lrv_adj))
+      pr_t <- posterior_prob(post_t_mix, tv_adj, post_c_mix, range_type = ifelse(lrv < tv, "greater", "less"))
+
+      post_prob <- rbind(post_prob, c(pr_m, pr_l, pr_t))
+      colnames(post_prob) <- c("pr_m", "pr_l", "pr_t")
+    }
+    post_dist_eval <- rbind(post_dist_eval, post_eval)
+    post_inference <- cbind(post_est_ci, post_prob)
+  }
+
+  if(endpoint == "g-score"){
+    # Parameter of interest: delta = mu_t - mu_c = log(theta_t/theta_c)
+    delta = log(true_value)
+    # Point estimate for each run: delta_hat = log(theta_t_hat) - log(theta_c_hat)
+    delta_hat <- log(post_dist_eval$est_compare)
+    # Average Bias of delta_hat
+    bias_avg <- mean(delta_hat - delta)
+    # Average Bias of estimated median ratio
+    bias_avg_median_ratio1 <-  exp(mean(delta_hat)) - true_value
+    median_ratio_hat = post_dist_eval$est_compare
+    bias_avg_median_ratio2 = mean(median_ratio_hat - true_value)
+
+    # Average SD (i.e., SE) of delta_hat
+    sds <- post_dist_eval$sd_compare
+    sd_avg = mean(sds)
+    # Empirical SD of delta_hat
+    sd_empirical = sd(delta_hat)
+    # Coverage probability 95%
+    ci <- data.frame(cil = log(post_dist_eval$compare_ci_l),
+                     ciu = log(post_dist_eval$compare_ci_u))
+    ci$coverage = ifelse(ci$cil < delta & ci$ciu > delta, 1, 0)
+    cp = mean(ci$coverage)
+
+    metrics <- data.frame(delta = delta, bias_avg = bias_avg,
+                          bias_avg_median_ratio1 = bias_avg_median_ratio1, bias_avg_median_ratio2 = bias_avg_median_ratio2,
+                          sd_avg = sd_avg, sd_empirical = sd_empirical, cp = cp)
+  } else if (endpoint == "OR"){
+    # Parameter of interest: delta = rate_t - rate_c
+    delta = true_value
+    # Point estimate for each run: delta_hat = rate_t_hat - rate_c_hat
+    delta_hat <- post_dist_eval$est_compare
+    # Average Bias of estimated rate difference
+    bias_avg_rate_diff <- mean(delta_hat - delta)
+
+    # Average SD (i.e., SE) of delta_hat
+    sds <- post_dist_eval$sd_compare
+    sd_avg = mean(sds)
+    # Empirical SD of delta_hat
+    sd_empirical = sd(delta_hat)
+    # Coverage probability 95%
+    ci <- data.frame(cil = post_dist_eval$compare_ci_l,
+                     ciu = post_dist_eval$compare_ci_u)
+    ci$coverage = ifelse(ci$cil < delta & ci$ciu > delta, 1, 0)
+    cp = mean(ci$coverage)
+
+    metrics <- data.frame(delta = delta, bias_avg_rate_diff = bias_avg_rate_diff,
+                          sd_avg = sd_avg, sd_empirical = sd_empirical, cp = cp)
+  }
+
+
+  if (Lalonde_decision) {
+    cat("Start making decisions based on Lalonde framework.\n")
+    post_inference$decision_pr <- with(post_inference, ifelse(pr_t > fsr & (pr_t + pr_l) > 1 - fgr, "go",
+                                                              ifelse(pr_t > fsr  & (pr_t + pr_l) <= 1 - fgr, "consider",
+                                                                     ifelse(pr_t <= fsr, "no-go", NA))))
+
+    post_inference$decision_ci <- if (lrv < tv) {
+      with(post_inference, ifelse(compare_ci_u > tv & compare_ci_l > lrv, "go",
+                                  ifelse(compare_ci_u > tv & compare_ci_l <= lrv, "consider",
+                                         ifelse(compare_ci_u <= tv, "no-go", NA))))
+
+    } else {
+      with(post_inference, ifelse(compare_ci_l < tv & compare_ci_u < lrv, "go",
+                                  ifelse(compare_ci_l < tv & compare_ci_u >= lrv, "consider",
+                                         ifelse(compare_ci_l >= tv, "no-go", NA))))
+    }
+    rownames(post_inference) <- NULL
+  }
+
+  return(list(post_params = post_params, metrics_post_dist = metrics, post_inference = post_inference))
+}
+
+
+
+bayesian_borrowing <- function(endpoint, data, prior_params, lrv, tv, fgr, fsr, arm_names, posterior_infer = T, Lalonde_decision = T) {
+
+  process_nsim <- function(nsims, data, endpoint, prior_params, arm_names, lrv, tv, fgr, fsr, posterior_infer = T, Lalonde_decision = T) {
+    post_params <- data.frame()
+    post_inference <- NULL
+
+    trt_name = arm_names["treatment"]
+    ctrl_name = arm_names["control"]
+    SINGLE_ARM <- (is.na(trt_name) || is.na(ctrl_name))
+
+    if(SINGLE_ARM){
+      name = c(trt_name, ctrl_name)[!is.na(c(trt_name, ctrl_name))]
+      arm <- ifelse(names(name) == "control", "ctrl", ifelse(names(name) == "treatment", "trt"))
+      for (nrep in nsims) {
+        historical <- if (any(names(arm_names) == paste0(name, "_h"))) data[data$arm == arm_names[paste0(name, "_h")] & data$nsim == nrep, ] else NULL
+        current <- data[data$arm == name & data$nsim == nrep, ]
+
+        if(historical$median_sd == 0) historical$median_sd = 0.000001
+        if(current$median_sd == 0) current$median_sd = 0.000001
+
+        post_c <- posterior_distribution(endpoint, current = current, historical = historical,
+                                         delta = prior_params[[paste0("delta_", arm)]], w = prior_params[[paste0("w_", arm)]],
+                                         a = prior_params[paste0("a_", arm)], b = prior_params[paste0("b_", arm)])
+        post_params_i <- NULL
+        p <- unlist(post_c$post)
+        names(p) <- paste0(name, ".", names(p), "_post")
+        post_params_i <- c(post_params_i, p)
+
+        prior_ws <-post_c$w_prior
+        names(prior_ws) <- paste0(name, ".w_prior")
+        post_params_i <- c(prior_ws, post_params_i)
+        post_params <- bind_rows(post_params, post_params_i)
+      }
+    } else {
+      for (nrep in nsims) {
+        historical_ctrl <- if (any(names(arm_names) == "control_h")) data[data$arm == arm_names["control_h"] & data$nsim == nrep, ] else NULL
+        historical_trt <- if (any(names(arm_names) == "treatment_h")) data[data$arm == arm_names["treatment_h"] & data$nsim == nrep, ] else data[data$arm == arm_names["control_h"] & data$nsim == nrep, ]
+        current_ctrl <- data[data$arm == ctrl_name & data$nsim == nrep, ]
+        current_trt <- data[data$arm == trt_name & data$nsim == nrep, ]
+
+        if(endpoint == "g-score"){
+          if(historical_ctrl$median_sd == 0) historical_ctrl$median_sd = 0.000001
+          if(historical_trt$median_sd == 0) historical_trt$median_sd = 0.000001
+          if(current_ctrl$median_sd == 0) current_ctrl$median_sd = 0.000001
+          if(current_trt$median_sd == 0) current_trt$median_sd = 0.000001
+        }
+
+        post_c <- posterior_distribution(endpoint,
+                                         current = current_ctrl,
+                                         historical = historical_ctrl,
+                                         delta = prior_params$control.delta, w = prior_params$control.w,
+                                         a = prior_params$a_ctrl, b = prior_params$b_ctrl)
+
+        post_t <- posterior_distribution(endpoint,
+                                         current = current_trt,
+                                         historical = historical_trt,
+                                         delta = prior_params$delta_trt, w = prior_params$treatment.w,
+                                         a = prior_params$a_trt, b = prior_params$b_trt)
+
+        post_params_i <- NULL
+
+        p <- unlist(post_t$post)
+        names(p) <- paste0("treatment.", names(p), "_post")
+        post_params_i <- c(post_params_i, p)
+
+        p <- unlist(post_c$post)
+        names(p) <- paste0("control.", names(p), "_post")
+        post_params_i <- c(post_params_i, p)
+
+        prior_ws <- c(post_t$w_prior, post_c$w_prior)
+        names(prior_ws) <- c("treatment.w_prior", "control.w_prior")
+        post_params_i <- c(prior_ws, post_params_i)
+
+        post_params <- bind_rows(post_params, post_params_i)
+      }
+
+
+      post_est_ci <- data.frame()
+      post_prob <- data.frame()
+      post_inference <- NULL
+
+      if (posterior_infer) {
+        for (nrep in nsims) {
+          p <- post_params[nrep, ]
+          post_t_mix <- convert_RBesT_mix(post = p[startsWith(names(p), "treatment.") & endsWith(names(p), "_post")],
+                                          endpoint = endpoint)
+          post_c_mix <- convert_RBesT_mix(post =p[startsWith(names(p), "control.") & endsWith(names(p), "_post")],
+                                          endpoint = endpoint)
+
+          quantiles <- if (lrv < tv) c(low = fgr, upper = 1 - fsr) else c(low = fsr, upper = 1 - fgr)
+
+          post_est_ci <- bind_rows(post_est_ci, posterior_inference(endpoint,
+                                                                    post1 = post_t_mix, post2 = post_c_mix,
+                                                                    quantiles = quantiles))
+
+          lrv_adj <- if (endpoint == "g-score") log(lrv) else lrv
+          tv_adj <- if (endpoint == "g-score") log(tv) else tv
+
+          pr_m <- posterior_prob(post_t_mix, lrv_adj, post_c_mix, range_type = ifelse(lrv < tv, "less", "greater"))
+          pr_l <- posterior_prob(post_t_mix, ifelse(lrv < tv, lrv_adj, tv_adj), post_c_mix, range_type = "between",
+                                 value2 = ifelse(lrv < tv, tv_adj, lrv_adj))
+          pr_t <- posterior_prob(post_t_mix, tv_adj, post_c_mix, range_type = ifelse(lrv < tv, "greater", "less"))
+
+          post_prob <- rbind(post_prob, c(pr_m, pr_l, pr_t))
+        }
+        colnames(post_prob) <- c("pr_m", "pr_l", "pr_t")
+        post_inference <- cbind(post_est_ci, post_prob)
+      }
+
+      # Make decisions
+      if (Lalonde_decision) {
+        post_inference$decision_pr <- with(post_inference, ifelse(pr_t > fsr & (pr_t + pr_l) > 1 - fgr, "go",
+                                                                  ifelse(pr_t > fsr  & (pr_t + pr_l) <= 1 - fgr, "consider",
+                                                                         ifelse(pr_t <= fsr, "no-go", NA))))
+
+        post_inference$decision_ci <- if (lrv < tv) {
+          with(post_inference, ifelse(compare_ci_u > tv & compare_ci_l > lrv, "go",
+                                      ifelse(compare_ci_u > tv & compare_ci_l <= lrv, "consider",
+                                             ifelse(compare_ci_u <= tv, "no-go", NA))))
+
+        } else {
+          with(post_inference, ifelse(compare_ci_l < tv & compare_ci_u < lrv, "go",
+                                      ifelse(compare_ci_l < tv & compare_ci_u >= lrv, "consider",
+                                             ifelse(compare_ci_l >= tv, "no-go", NA))))
+
+        }
+        rownames(post_inference) <- NULL
+      }
+    }
+
+    return(list(post_params = post_params, post_inference = post_inference))
+  }
+
+  if (endpoint == "g-score") {
+    return(process_nsim(nsims = unique(data$median_est$nsim), data = data$median_est,
+                        endpoint = endpoint, prior_params = prior_params, arm_names = arm_names,
+                        lrv = lrv, tv = tv, fgr = fgr, fsr = fsr,
+                        posterior_infer = posterior_infer, Lalonde_decision = Lalonde_decision))
+  } else if (endpoint == "OR") {
+    OR_counts <- data$freq %>% filter(resp == 1)
+    return(process_nsim(nsims = unique(OR_counts$nsim), data = OR_counts,
+                        endpoint = endpoint, prior_params = prior_params, arm_names = arm_names,
+                        lrv = lrv, tv = tv, fgr = fgr, fsr = fsr,
+                        posterior_infer = posterior_infer, Lalonde_decision = Lalonde_decision))
+  }
+}
+
+
+# -----------------------------------------------------------------------------
+# Function to obtain the operating characteristics (OC) from simulation results.
+# Args:
+#     settings (data frame): The simulation settings for each scenario.
+#     decisions (data frame): The decisions made based on the posterior probabilities and credible intervals.
+# Returns:
+#     data frame: A combined data frame of settings and proportions of decisions based on posterior probability and credible intervals.
+# -----------------------------------------------------------------------------
+obtain_OC <- function(settings, decisions){
+  # Proportion of decisions made based on the posterior probability
+  proportion_pr <- decisions %>%
+    group_by(decision_pr) %>%
+    summarise(count_pr = n(), .groups = 'drop') %>%
+    complete(decision_pr = factor(levels(decision_pr)), fill = list(count_pr = 0)) %>%
+    mutate(proportion_pr = count_pr / sum(count_pr, na.rm = TRUE))
+  # Proportion of decisions made based on the credible interval
+  proportion_ci <- decisions %>%
+    group_by(decision_ci) %>%
+    summarise(count_ci = n(), .groups = 'drop') %>%
+    complete(decision_ci = factor(levels(decision_ci)), fill = list(count_ci = 0)) %>%
+    mutate(proportion_ci = count_ci / sum(count_ci, na.rm = TRUE))
+
+  OC <- cbind(settings, cbind(proportion_pr, proportion_ci))
+  return(OC)
+}
+
+# -----------------------------------------------------------------------------
+# Main function to run simulations and obtain decisions and operating characteristics.
+# Args:
+#     endpoint (character): The type of endpoint ('g-score' or other).
+#     nsim (numeric): Number of simulations to run.
+#     data_gen_params (list): List of data generation parameters for each arm.
+#     prior_params (list): List of prior parameters for Bayesian analysis.
+#     lrv (numeric): Lower reference value for decision-making.
+#     tv (numeric): Target value for decision-making.
+#     fgr (numeric): False go rate.
+#     fsr (numeric): False stop rate.
+# Returns:
+#     list: A list containing decisions and operating characteristics for each simulation.
+# -----------------------------------------------------------------------------
+
+run_simulation <- function(endpoint = "g-score", nsim, data_gen_params, prior_params_list = NULL,
+                           lrv = NULL, tv = NULL, fgr = 0.2, fsr = 0.1,
+                           historical_borrowing = TRUE,
+                           posterior_infer = TRUE, Lalonde_decision = TRUE) {
+  cat("Data will be generated for arms:", names(data_gen_params), ".\n")
+
+  historical_arms <- names(data_gen_params)[names(data_gen_params) %in% c("control_h", "treatment_h")]
+  historical_arms <- gsub("_h", "", historical_arms)
+
+  if (length(historical_arms) == 0) {
+    cat("No historical data are given for any arm.\n")
+    historical_borrowing <- FALSE
+  }
+
+  if(historical_borrowing){
+    if (is.null(prior_params_list)) {
+      stop("No prior parameters are given. Cannot proceed historical data borrowing. ")
+    }
+  }else{
+    cat("No historical information borrowing.\n")
+  }
+
+  if(!posterior_infer) {Lalonde_decision = FALSE}
+
+
+  cat("Start generating data. \n")
+
+  n_arms <- length(data_gen_params)
+  arm_names <- sapply(data_gen_params, function(x) x$name)
+  n_list <- sapply(data_gen_params, function(x) x$n)
+  prob_list <- sapply(data_gen_params, function(x) x$prob)
+  mu_list <- sapply(data_gen_params, function(x) x$mu)
+  sigma_list <- sapply(data_gen_params, function(x) x$sigma)
+
+  # Generate simulation dataset
+  data <- data_gen(endpoint = endpoint, n_arms = n_arms,
+                    arm_names = arm_names, nsim = nsim, n_list = n_list,
+                    prob_list = prob_list, mu_list = mu_list, sigma_list = sigma_list)
+
+  true_value <- data$true_value$compare_true
+
+  # Assess normal approximation of g-score
+  if (endpoint == "g-score") {
+    cat("Start assessing the normal approximation of log g-score median estimate.\n")
+    settings <- c(list(true_value = true_value, TV = tv, LRV = lrv), data_gen_params)
+    settings <- as.data.frame(t(unlist(settings)), stringsAsFactors = FALSE) %>%
+      mutate(across(
+        .cols = -c(ends_with(".name")),
+        .fns = as.numeric
+      ))
+
+    median_est <- data$median_est %>%
+      select(nsim, arm, median_unadjusted, median_adjusted, median_sd) %>%
+      pivot_wider(names_from = arm,
+                  values_from = c(median_unadjusted, median_adjusted, median_sd),
+                  names_glue = "{arm}.{.value}")
+    median_est <- cbind(settings, median_est)
+
+    g_sd_intermediate <- data$g_sd_intermediate
+    g_sd_intermediate <- cbind(settings, g_sd_intermediate)
+
+    # Evaluate the normal approximation of log(g-score median)
+    metrics_approx_dist <- cbind(settings, eval_gscore_approx_dist(data))
+
+  } else {
+    median_est <- metrics_approx_dist <- g_sd_intermediate <- NULL
+  }
+
+
+  decisions_all <- list()
+  OC_all <- list()
+  post_params_all <- list()
+  metrics_post_dist_all <- list()
+
+  if(historical_borrowing){
+    cat("Start borrowing historical information.\n")
+    get_all_functions <- function(env = environment()) {
+      all_objects <- ls(env)
+      functions <- sapply(all_objects, function(obj_name) is.function(get(obj_name, envir = env)))
+      return(names(functions)[functions])
+    }
+
+    cl <- makeCluster(detectCores() - 1)
+    required_vars <- c("endpoint", "data", "lrv", "tv", "fgr", "fsr", "arm_names", "true_value", "median_est",
+                       "posterior_infer", "Lalonde_decision",
+                       "data_gen_params", "prior_params_list")
+    required_funcs <- get_all_functions(globalenv())
+    clusterExport(cl, c(required_vars, required_funcs), envir = environment())
+    clusterEvalQ(cl, {
+      library(dplyr)
+      library(tidyr)
+      library(purrr)
+      library(RBesT)
+      library(BayesianHybridDesign)
+      library(parallel)
+      library(data.table)
+    })
+
+    results <- parLapply(cl, 1:length(prior_params_list), function(i) {
+
+      prior_params <- prior_params_list[[i]]
+      borrowing <- names(prior_params_list)[i]
+
+      settings <- c(list(true_value = true_value, TV = tv, LRV = lrv,
+                         borrowing = borrowing), data_gen_params, prior_params[!names(prior_params) %in% c("treatment.w", "control.w")])
+      settings <- as.data.frame(t(unlist(settings)), stringsAsFactors = FALSE)
+
+      if (endpoint == "g-score") {
+        post <- bayesian_lalonde_decision(endpoint = endpoint,
+                                           data = median_est, prior_params = prior_params,
+                                           lrv = lrv, tv = tv, fgr = fgr, fsr = fsr,
+                                           arm_names = arm_names,
+                                           true_value = true_value,
+                                           posterior_infer = posterior_infer, Lalonde_decision = Lalonde_decision)
+      } else if (endpoint == "OR") {
+        OR_counts <- data$freq %>%
+          filter(resp == 1) %>%
+          select(-resp) %>%
+          pivot_wider(names_from = arm,
+                      values_from = c(count, n),
+                      names_glue = "{arm}.{.value}")
+        post <- bayesian_lalonde_decision(endpoint = endpoint,
+                                           data = OR_counts, prior_params = prior_params,
+                                           lrv = lrv, tv = tv, fgr = fgr, fsr = fsr,
+                                           arm_names = arm_names,
+                                          true_value = true_value,
+                                           posterior_infer = posterior_infer, Lalonde_decision = Lalonde_decision)
+      }
+
+      post_params <- post$post_params
+      post_params <- cbind(settings, post_params) %>%
+        mutate(across(
+          .cols = -c(ends_with(".name"), "borrowing"),
+          .fns = as.numeric
+        ))
+
+      metrics_post_dist <- cbind(settings, post$metrics_post_dist)
+
+      # Obtain OC
+      cat("Start obtaining operating characteristics.\n")
+      decisions <- post$post_inference
+      if (!is.null(decisions)) {
+        decisions <- cbind(settings, decisions)
+        decisions$decision_pr <- factor(decisions$decision_pr, levels = c("go", "consider", "no-go"))
+        decisions$decision_ci <- factor(decisions$decision_ci, levels = c("go", "consider", "no-go"))
+
+        OC <- obtain_OC(settings, decisions)
+
+        return(list(post_params = post_params, metrics_post_dist = metrics_post_dist,  decisions = decisions, OC = OC))
+      } else {
+        return(list(post_params = post_params, metrics_post_dist = metrics_post_dist, decisions = NULL, OC = NULL))
+      }
+    })
+
+    stopCluster(cl)
+
+    for (res in results) {
+      post_params_all <- bind_rows(post_params_all, res$post_params)
+      metrics_post_dist_all <- bind_rows(metrics_post_dist_all, res$metrics_post_dist)
+      if (!is.null(res$decisions)) {
+        decisions_all <- bind_rows(decisions_all, res$decisions)
+        OC_all <- bind_rows(OC_all, res$OC)
+      }
+    }
+  }
+
+  return(list(data = data$data, median_est = median_est, g_sd_intermediate = g_sd_intermediate,
+              metrics_approx_dist = metrics_approx_dist,
+              post_params = post_params_all, metrics_post_dist = metrics_post_dist_all,
+              decisions = decisions_all, OC = OC_all))
+}
+
+
+
+obtain_ess <- function(post_params, borrowing, median_est) {
+  post_params <- post_params[startsWith(names(post_params), borrowing) & endsWith(names(post_params), "_post")]
+  sampling_sigma <- (median_est[[paste0(borrowing, ".median_sd")]] / median_est[[paste0(borrowing, ".median_adjusted")]]) * sqrt(median_est[[paste0(borrowing, ".n")]])
+  if (sampling_sigma == 0) {sampling_sigma <- 0.000001}
+  post <- convert_RBesT_mix(post = post_params, endpoint = "g-score")
+  ess(post, sigma = sampling_sigma)
+}
+
+eval_gscore_approx_dist <- function(data){
+
+  # Parameter of interest: delta = mu_t - mu_c = log(theta_t/theta_c)
+  true_median_ratio = data$true_value$compare_true
+  delta = log(true_median_ratio)
+
+  # Point estimate for each run: delta_hat = log(theta_t_hat) - log(theta_c_hat)
+  median_est_wide <- data$median_est %>%
+    filter(arm %in% c("treatment", "control")) %>%
+    pivot_wider(
+      names_from = arm,
+      values_from = c(median_unadjusted, median_adjusted, median_sd),
+      names_sep = "."
+    )
+
+  delta_hat = log(median_est_wide$median_adjusted.treatment) - log(median_est_wide$median_adjusted.control)
+
+  # Average Bias of delta_hat
+  bias_avg <- mean(delta_hat - delta)
+  bias_relative <- bias_avg/abs(delta)
+  # Average Bias of estimated median ratio
+
+  bias_avg_median_ratio1 <-  exp(mean(delta_hat)) - true_median_ratio
+  median_ratio_hat = median_est_wide$median_adjusted.treatment / median_est_wide$median_adjusted.control
+  bias_avg_median_ratio2 = mean(median_ratio_hat - true_median_ratio)
+
+  # Average SD (i.e., SE) of delta_hat
+  # SD = sqrt(var(mu_t_hat) + var(mu_c_hat))
+  # var(mu_hat) = V_ZH / theta_hat^2
+  var_mu_hat_t = (median_est_wide$median_sd.treatment)^2 / ((median_est_wide$median_adjusted.treatment)^2)
+  var_mu_hat_c = (median_est_wide$median_sd.control)^2 / ((median_est_wide$median_adjusted.control)^2)
+  sds <- sqrt(var_mu_hat_t + var_mu_hat_c)
+  sd_avg = mean(sds)
+
+  # Empirical SD of delta_hat
+  sd_empirical = sd(delta_hat)
+
+  # Coverage probability 95%
+  ci = data.frame(cil = delta_hat + qnorm(0.025) * sds,
+                  ciu = delta_hat + qnorm(0.975) * sds)
+  ci$coverage = ifelse(ci$cil < delta & ci$ciu > delta, 1, 0)
+  cp = mean(ci$coverage)
+
+  metrics <- data.frame(delta = delta, bias_avg = bias_avg, bias_avg_median_ratio1 = bias_avg_median_ratio1,
+                        bias_avg_median_ratio2 = bias_avg_median_ratio2, sd_avg = sd_avg, sd_empirical = sd_empirical, cp = cp)
+
+  return(metrics)
+}
+
+# -----------------------------------------------------------------------------
+# Function to create a single set of data generation parameters.
+# This function validates and processes a list of input parameters for
+# treatment and control groups, as well as their historical counterparts.
+# Missing parameters are replaced with NA and warnings are issued.
+#
+# Args:
+#     params (list): A list containing the parameters for data generation.
+#         - trt_n (numeric): Sample size for the treatment group.
+#         - trt_prob (numeric): Probability for the treatment group.
+#         - trt_mu (numeric): Mean value for the treatment group.
+#         - trt_sigma (numeric): Standard deviation for the treatment group.
+#         - ctrl_n (numeric): Sample size for the control group.
+#         - ctrl_prob (numeric): Probability for the control group.
+#         - ctrl_mu (numeric): Mean value for the control group.
+#         - ctrl_sigma (numeric): Standard deviation for the control group.
+#         - trt_h_n (numeric): Sample size for the historical treatment group.
+#         - trt_h_prob (numeric): Probability for the historical treatment group.
+#         - trt_h_mu (numeric): Mean value for the historical treatment group.
+#         - trt_h_sigma (numeric): Standard deviation for the historical treatment group.
+#         - ctrl_h_n (numeric): Sample size for the historical control group.
+#         - ctrl_h_prob (numeric): Probability for the historical control group.
+#         - ctrl_h_mu (numeric): Mean value for the historical control group.
+#         - ctrl_h_sigma (numeric): Standard deviation for the historical control group.
+#
+# Returns:
+#     list: A nested list containing the processed parameters for each group:
+#         - treatment: Parameters for the treatment group.
+#         - control: Parameters for the control group.
+#         - treatment_h: Parameters for the historical treatment group.
+#         - control_h: Parameters for the historical control group.
+# -----------------------------------------------------------------------------
+create_data_gen_params <- function(params, endpoint) {
+  check_param <- function(param, param_name) {
+    if (!is.null(param)) {
+      return(param)
+    } else {
+      warning(paste("Warning: Parameter", param_name, "is missing. Replacing with NA."))
+      return(NA)
+    }
+  }
+  safe_log <- function(param, param_name) {
+    if (!is.null(param)) {
+      return(log(param))
+    } else {
+      warning(paste("Warning: Parameter", param_name, "is missing. Replacing with NA."))
+      return(NA)
+    }
+  }
+  param_list <- list(
+    treatment = list(
+      n = check_param(params$trt_n, "trt_n"),
+      prob = check_param(params$trt_prob, "trt_prob"),
+      mu = safe_log(params$trt_mu, "trt_mu"),
+      sigma = check_param(params$trt_sigma, "trt_sigma"),
+      name = "treatment"
+    ),
+    control = list(
+      n = check_param(params$ctrl_n, "ctrl_n"),
+      prob = check_param(params$ctrl_prob, "ctrl_prob"),
+      mu = safe_log(params$ctrl_mu, "ctrl_mu"),
+      sigma = check_param(params$ctrl_sigma, "ctrl_sigma"),
+      name = "control"
+    ),
+    treatment_h = list(
+      n = check_param(params$trt_h_n, "trt_h_n"),
+      prob = check_param(params$trt_h_prob, "trt_h_prob"),
+      mu = safe_log(params$trt_h_mu, "trt_h_mu"),
+      sigma = check_param(params$trt_h_sigma, "trt_h_sigma"),
+      name = "treatment_h"
+    ),
+    control_h = list(
+      n = check_param(params$ctrl_h_n, "ctrl_h_n"),
+      prob = check_param(params$ctrl_h_prob, "ctrl_h_prob"),
+      mu = safe_log(params$ctrl_h_mu, "ctrl_h_mu"),
+      sigma = check_param(params$ctrl_h_sigma, "ctrl_h_sigma"),
+      name = "control_h"
+    )
+  )
+  # Filter out entries with missing n or prob parameters
+  if(endpoint == "g-score"){
+    param_list_filtered <- Filter(function(x) !any(sapply(x, is.na)), param_list)
+  } else if (endpoint == "OR"){
+    param_list_filtered <- Filter(function(x) !any(sapply(x[c("n", "prob")], is.na)), param_list)
+  }
+
+  return(param_list_filtered)
+}
+
+
+
+
