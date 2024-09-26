@@ -1,0 +1,2 @@
+load("/Users/zhiningsui/GitHub/BayesLalonde/sim1_metrics_approx_dist_1.rds")
+load("/Users/zhiningsui/GitHub/BayesLalonde/sim1_metrics_approx_dist_3.rds")
