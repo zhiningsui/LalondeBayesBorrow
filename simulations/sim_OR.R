@@ -1,7 +1,9 @@
+library(LalondeBayesBorrow)
+library(tidyverse)
 library(kableExtra)
 
 
-# Simulation II -----------------------------------------------------------
+# Simulations -------------------------------------------------------------
 
 param_grid_h <- expand.grid(
   ctrl_h_n = 200, # Sample size for the historical control group.
@@ -9,14 +11,31 @@ param_grid_h <- expand.grid(
   stringsAsFactors = FALSE
 )
 
-param_grid <- expand.grid(
+param_grid1 <- expand.grid(
   trt_n = c(20, 40, 60), # Sample size for the treatment group.
   ctrl_prob = seq(0.1, 0.5, 0.1), # Probability of zero g-scores in the control group.
   stringsAsFactors = FALSE
 ) %>%
   mutate(ctrl_n = trt_n,
-         trt_prob = 0.2+ctrl_prob)
+         trt_prob = 0.1 + ctrl_prob)
 
+param_grid2 <- expand.grid(
+  trt_n = c(20, 40, 60), # Sample size for the treatment group.
+  ctrl_prob = seq(0.1, 0.5, 0.1), # Probability of zero g-scores in the control group.
+  stringsAsFactors = FALSE
+) %>%
+  mutate(ctrl_n = trt_n,
+         trt_prob = 0.15 + ctrl_prob)
+
+param_grid3 <- expand.grid(
+  trt_n = c(20, 40, 60), # Sample size for the treatment group.
+  ctrl_prob = seq(0.1, 0.5, 0.1), # Probability of zero g-scores in the control group.
+  stringsAsFactors = FALSE
+) %>%
+  mutate(ctrl_n = trt_n,
+         trt_prob = 0.2 + ctrl_prob)
+
+param_grid <- bind_rows(param_grid1, param_grid2, param_grid3)
 
 data_gen_params_list_h <- lapply(apply(param_grid_h, 1, as.list),
                                create_data_gen_params, endpoint = "OR")
@@ -25,14 +44,12 @@ data_gen_params_list <- lapply(apply(param_grid, 1, as.list),
                                create_data_gen_params, endpoint = "OR")
 
 prior_params_list <- list(
-  Yes = list(treatment.delta = 0.1, control.delta = 0.1, treatment.a = 1, treatment.b = 1, control.a = 1, control.b = 1, treatment.w = 0, control.w = NULL, gate = 0.2), # borrowing on the control arm
-  No = list(treatment.delta = 0.1, control.delta = 0.1, treatment.a = 1, treatment.b = 1, control.a = 1, control.b = 1, treatment.w = 0, control.w = 0) # no borrowing
+  Yes = list(treatment.a = 0.01, treatment.b = 0.01, control.delta = 0.1, control.a = 0.01, control.b = 0.01, treatment.w = 0, control.w = NULL), # borrowing on the control arm
+  No = list(treatment.a = 0.01, treatment.b = 0.01, control.delta = 0.1, control.a = 0.01, control.b = 0.01, treatment.w = 0, control.w = 0) # no borrowing
 )
-
 
 nsim = 10000
 bayes_results <- list()
-historical_est <- all_historical_est[[1]]
 data_gen_params_h <- data_gen_params_list_h[[1]]
 
 for (i in seq_along(data_gen_params_list)) {
@@ -55,19 +72,10 @@ for (i in seq_along(data_gen_params_list)) {
   # Generate simulation dataset
   data <- data_gen_binary(n_arms = n_arms, arm_names = arm_names, nsim = nsim,
                           n_list = n_list, prob_list = prob_list)
-
-  # settings <- c(list(true_value = data$true_value), data_gen_params, data_gen_params_h)
-  # settings <- as.data.frame(t(unlist(settings)), stringsAsFactors = FALSE) %>%
-  #   mutate(across(
-  #     .cols = -c(ends_with(".name")),
-  #     .fns = as.numeric
-  #   ))
-
   freq <- data$freq
   freq_h <- data.frame(control_h.n = data_gen_params_h$control_h$n,
                        control_h.count = data_gen_params_h$control_h$n*data_gen_params_h$control_h$prob)
   freq <- cbind(freq, freq_h)
-  # freq <- cbind(settings, freq)
 
   cat("Start Bayesian analysis.\n")
   for (k in seq_along(prior_params_list)) {
@@ -82,7 +90,7 @@ for (i in seq_along(data_gen_params_list)) {
         .fns = as.numeric
       ))
 
-    post <- bayesian_lalonde_decision(endpoint = "OR",
+    post <- bayesian_lalonde_decision(endpoint = "binary",
                                       data_summary = freq,
                                       prior_params = prior_params,
                                       arm_names = list(treatment = "treatment",
@@ -103,10 +111,8 @@ for (i in seq_along(data_gen_params_list)) {
 }
 
 
-saveRDS(bayes_results, file = "sim_bayes_results_OR.rds")
-
-bayes_results <- readRDS("sim2_bayes_results_2.rds")
-metrics_approx_dist <- readRDS("sim2_metrics_approx_dist_2.rds")
+# saveRDS(bayes_results, file = "sim_OR_bayes_results_10_1.rds")
+# bayes_results <- readRDS("sim_OR_bayes_results_10_1.rds")
 
 post_params_all <- data.frame()
 post_est_ci_all <- data.frame()
@@ -129,7 +135,6 @@ for (i in seq_along(bayes_results)) {
   oc_all <- bind_rows(oc_all, cbind(i, oc))
 }
 
-
 bayes_results_all <- list(
   metrics_post_dist_all = metrics_post_dist_all,
   post_params_all = post_params_all,
@@ -138,396 +143,338 @@ bayes_results_all <- list(
   oc_all = oc_all
 )
 
-saveRDS(bayes_results_all, "sim2_bayes_results_all_2.rds")
+# saveRDS(bayes_results_all, "sim_OR_bayes_results_df_10_1.rds")
 
 
 
+# Analysis ----------------------------------------------------------------
 
-# Analysis I --------------------------------------------------------------
+bayes_results_all <- readRDS("simulations/sim_OR_bayes_results_df_10_1.rds")
 
-
-post_params_all <- data.frame()
-post_est_ci_all <- data.frame()
-metrics_post_dist_all <- data.frame()
-for (i in seq_along(bayes_results)) {
-  res <- bayes_results[[i]]
-  setting <- res$settings
-  post_params <- cbind(setting, res$post_params)
-  post_est_ci <- cbind(setting, res$post_est_ci)
-  metrics_post_dist <- cbind(setting, res$metrics_post_dist)
-
-  post_params_all <- bind_rows(post_params_all, cbind(i, post_params))
-  post_est_ci_all <- bind_rows(post_est_ci_all, cbind(i, post_est_ci))
-  metrics_post_dist_all <- bind_rows(metrics_post_dist_all, cbind(i, metrics_post_dist))
-}
-
-results_all <- list(
-  metrics_approx_dist_all = metrics_approx_dist,
-  metrics_post_dist_all = metrics_post_dist_all,
-  post_params_all = post_params_all,
-  post_est_ci_all = post_est_ci_all
-)
-saveRDS(results_all, file = "sim1_results_all_2.rds")
-
-results_all <- readRDS(file = "sim1_results_all_2.rds")
-metrics_approx_dist <- results_all$metrics_approx_dist_all
-metrics_post_dist <- results_all$metrics_post_dist_all
-
-
-
-# metrics_approx_dist$borrowing <- "Frequentist"
-# metrics_post_dist$borrowing <- ifelse(metrics_post_dist$borrowing == "No", "Bayesian: No Borrowing", "Bayesian: Borrowing")
-# combined_dist <- bind_rows(metrics_approx_dist, metrics_post_dist)
-#
-# combined_dist$control.mu = round(exp(as.numeric(combined_dist$control.mu)), 3)
-# combined_dist$treatment.mu = round(exp(as.numeric(combined_dist$treatment.mu)), 4)
-# combined_dist$control_h.mu = round(exp(as.numeric(combined_dist$control_h.mu)), 3)
-# combined_dist$control.n = factor(combined_dist$control.n)
-# combined_dist$Approach <- combined_dist$borrowing
-# combined_dist$Approach <- factor(combined_dist$Approach, levels = c("Frequentist", "Bayesian: No Borrowing", "Bayesian: Borrowing"))
-#
-#
-# # metrics_df <- combined_dist %>%
-# #   select(treatment.mu, control.mu, control_h.mu, treatment.prob,
-# #          control.prob, control_h.prob, true_value.compare_true, control.n, Approach,
-# #          bias_avg_median_ratio1, sd_avg, sd_empirical, cp) %>%
-# #   arrange(treatment.mu, control.mu, treatment.prob, control.n)
-# #
-# # metrics_df <- metrics_df[metrics_df$control.prob == metrics_df$control_h.prob,]
-# #
-# # kbl(metrics_df, escape = F, row.names = F,
-# #     format    = "html",
-# #     longtable = T,
-# #     booktabs  = T,
-# #     col.names = c("Treatment", "Control", "Historical", "Treatment", "Control","Historical", "True Median Ratio\n(Treatment/Control)<sup>1</sup>", "Sample Size<sup>2</sup>", "Approach", "BIAS<sup>3</sup>", "SE<sup>4</sup>", "SD<sup>5</sup>", "CP<sup>6</sup>")) %>%
-# #   kable_classic(full_width = FALSE) %>%
-# #   add_header_above(c("Mean of positive g-score median" = 3, "Prob of Zero" = 3, " " = 7)) %>%
-# #   collapse_rows(columns = 1:8, valign = "top") %>%
-# #   footnote(number = c("True g-score median of treatment arm over true g-score median of control arm, obtained based on the zero-inflated lognormal distribution (determined by proportion of zeros in both arms)",
-# #                       "Sample size for each arm.",
-# #                       "Average bias of the estimated median ratio over 10K simulations.",
-# #                       "Average standard error of the estimated log median ratio over 10K simulations.",
-# #                       "Empirical standard deviation of the estimated log median ratio.",
-# #                       "95% coverage probability under normal distribution."))
-#
-# metrics_df <- combined_dist %>%
-#   select(treatment.prob, control.prob, control_h.prob,
-#          true_value.compare_true, control.n, Approach,
-#          bias_avg_median_ratio1, sd_avg, sd_empirical, cp) %>%
-#   arrange(treatment.prob, control.n)
-#
-# kbl(metrics_df, escape = F, row.names = F,
-#     format    = "html",
-#     longtable = T,
-#     booktabs  = T,
-#     col.names = c("Treatment", "Control","Historical", "True Median Ratio\n(Treatment/Control)<sup>1</sup>", "Sample Size<sup>2</sup>", "Approach", "BIAS<sup>3</sup>", "SE<sup>4</sup>", "SD<sup>5</sup>", "CP<sup>6</sup>")) %>%
-#   kable_classic(full_width = FALSE) %>%
-#   add_header_above(c("Prob of Zero" = 3, " " = 7)) %>%
-#   collapse_rows(columns = 1:5, valign = "top") %>%
-#   footnote(number = c("True g-score median of treatment arm over true g-score median of control arm, obtained based on the zero-inflated lognormal distribution (determined by proportion of zeros in both arms)",
-#                       "Sample size for each arm.",
-#                       "Average bias of the estimated median ratio over 10K simulations.",
-#                       "Average standard error of the estimated log median ratio over 10K simulations.",
-#                       "Empirical standard deviation of the estimated log median ratio.",
-#                       "95% coverage probability under normal distribution.")) %>%
-#   save_kable("sim1_metrics_table.png")
-#
-# metrics_df$probs <- paste0("Treatment Prob of Zero = ", metrics_df$treatment.prob, ",\nControl Prob of Zero = ", metrics_df$control.prob)
-# p1 <- ggplot(metrics_df, aes(x = control.n, y = bias_avg_median_ratio1, color = Approach)) +
-#   geom_point() +
-#   facet_grid(~probs) +
-#   geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
-#   labs(x = "Sample Size", y = "Bias", title = "Average Bias") +
-#   theme_bw() +
-#   theme(legend.position = "bottom")
-#
-#
-# metrics_long <- metrics_df %>%
-#   pivot_longer(c(sd_avg, sd_empirical), names_to = "sd_type", values_to = "sd_value")
-#
-# p2 <- ggplot(metrics_long, aes(x = control.n, y = sd_value, color = sd_type)) +
-#   geom_point() +
-#   facet_grid(Approach~probs) +
-#   labs(x = "Sample Size", y = "SD", title = "Average SD vs. Empirical SD") +
-#   theme_bw() +
-#   theme(legend.position = "bottom")
-#
-# p3 <- ggplot(metrics_df, aes(x = control.n, color = Approach, y = cp)) +
-#   geom_point() +
-#   facet_grid(~probs) +
-#   geom_hline(yintercept = 0.95, color = "red", linetype = "dashed") +
-#   labs(x = "Sample Size", y = "Coverage probability", title = "Coverage Probability") +
-#   theme_bw() +
-#   theme(legend.position = "bottom")
-#
-#
-# p <- p1 / p2 / p3 +
-#   plot_layout(heights = c(1,3,1))
-#
-# ggsave(filename = "sim1_dist_check_metrics.jpg", p, width = 12, height = 12)
-#
-#
-#
-#
-
-metrics_post_dist$control.mu = round(exp(as.numeric(metrics_post_dist$control.mu)), 3)
-metrics_post_dist$treatment.mu = round(exp(as.numeric(metrics_post_dist$treatment.mu)), 4)
-metrics_post_dist$control_h.mu = round(exp(as.numeric(metrics_post_dist$control_h.mu)), 3)
-metrics_post_dist$control.n = factor(metrics_post_dist$control.n)
-metrics_post_dist$Approach <- metrics_post_dist$borrowing
-metrics_post_dist$Approach <- ifelse(metrics_post_dist$borrowing == "No", "Yes", "No")
-
-
-metrics_df <- metrics_post_dist %>%
-  select(treatment.prob, control.prob, control_h.prob,
-         true_value.compare_true, control.n, Approach,
-         bias_avg_median_ratio1, sd_avg, sd_empirical, cp) %>%
-  arrange(treatment.prob, control.n)
-
-kbl(metrics_df, escape = F, row.names = F,
-    format    = "html",
-    longtable = T,
-    booktabs  = T,
-    col.names = c("Treatment", "Control","Historical", "True Median Ratio\n(Treatment/Control)<sup>1</sup>", "Sample Size<sup>2</sup>", "Borrowing", "BIAS<sup>3</sup>", "SE<sup>4</sup>", "SD<sup>5</sup>", "CP<sup>6</sup>")) %>%
-  kable_classic(full_width = FALSE) %>%
-  add_header_above(c("Prob of Zero" = 3, " " = 7)) %>%
-  collapse_rows(columns = 1:5, valign = "top") %>%
-  footnote(number = c("True g-score median of treatment arm over true g-score median of control arm, obtained based on the zero-inflated lognormal distribution (determined by proportion of zeros in both arms)",
-                      "Sample size for each arm.",
-                      "Average bias of the estimated median ratio over 10K simulations.",
-                      "Average standard error of the estimated log median ratio over 10K simulations.",
-                      "Empirical standard deviation of the estimated log median ratio.",
-                      "95% coverage probability under normal distribution.")) %>%
-  save_kable("sim1_metrics_table.png")
-
-metrics_df$probs <- paste0("Treatment Prob of Zero = ", metrics_df$treatment.prob, ",\nControl Prob of Zero = ", metrics_df$control.prob)
-p1 <- ggplot(metrics_df, aes(x = control.n, y = bias_avg_median_ratio1, color = Approach)) +
-  geom_point() +
-  facet_grid(~probs) +
-  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
-  labs(x = "Sample Size", y = "Bias", title = "Average Bias", color= "Borrowing") +
-  theme_bw() +
-  theme(legend.position = "bottom")
-
-ggsave(filename = "sim1_check_post_dist_bias.jpg", p1, width = 10, height = 3.6)
-
-metrics_post_dist$Approach <- ifelse(metrics_post_dist$borrowing == "No", "No", "Yes")
-metrics_df <- metrics_post_dist %>%
-  select(treatment.prob, control.prob, control_h.prob,
-         true_value.compare_true, control.n, Approach,
-         bias_avg_median_ratio1, sd_avg, sd_empirical, cp) %>%
-  arrange(treatment.prob, control.n)
-metrics_df$probs <- paste0("Treatment Prob of Zero = ", metrics_df$treatment.prob, ",\nControl Prob of Zero = ", metrics_df$control.prob)
-metrics_long <- metrics_df %>%
-  pivot_longer(c(sd_avg, sd_empirical), names_to = "sd_type", values_to = "sd_value")
-
-p2 <- ggplot(metrics_long, aes(x = control.n, y = sd_value, color = sd_type)) +
-  geom_point() +
-  ggh4x::facet_grid2(Approach~probs,
-                     scales = "free_y", independent = "y",
-             labeller = labeller(
-               Approach = function(x) paste("Borrowing: ", x))) +
-  labs(x = "Sample Size", y = "SD", title = "Average SD vs. Empirical SD") +
-  theme_bw() +
-  theme(legend.position = "bottom")
-ggsave(filename = "sim1_check_post_dist_sd.jpg", p2, width = 12, height = 4)
-
-p3 <- ggplot(metrics_df, aes(x = control.n, color = Approach, y = cp)) +
-  geom_point() +
-  facet_grid(~probs) +
-  geom_hline(yintercept = 0.95, color = "red", linetype = "dashed") +
-  labs(x = "Sample Size", y = "Coverage probability", color = "Borrowing",
-       title = "Coverage Probability") +
-  theme_bw() +
-  theme(legend.position = "bottom")
-
-ggsave(filename = "sim1_check_post_dist_cp.jpg", p3, width = 10, height = 4)
-
-
-p <- p1 / p2 / p3 +
-  plot_layout(heights = c(1,3,1))
-
-ggsave(filename = "sim1_dist_check_metrics.jpg", p, width = 12, height = 12)
-
-
-
-
-
-
-
-metrics_post_dist <- metrics_post_dist %>%
+## Check posterior parameters
+post_params_all <- bayes_results_all$post_params_all
+post_params_all <- post_params_all  %>%
   mutate(across(
-    .cols = -c(ends_with(".name"), "borrowing"),
+    .cols = -c(borrowing, ends_with(".name")),
     .fns = as.numeric
   ))
 
-metrics_post_dist$control.mu = round(exp(as.numeric(metrics_post_dist$control.mu)), 3)
-metrics_post_dist$treatment.mu = round(exp(as.numeric(metrics_post_dist$treatment.mu)), 4)
-metrics_post_dist$control_h.mu = round(exp(as.numeric(metrics_post_dist$control_h.mu)), 3)
-metrics_post_dist$control.n = factor(metrics_post_dist$control.n)
+post_params_all$control.prob.diff <- post_params_all$control.prob - post_params_all$control_h.prob
+post_params_all$true_value.compare_true = ifelse(post_params_all$true_value.compare_true == 0.1, "0.1 (LRV)",
+                                                       ifelse(post_params_all$true_value.compare_true == 0.2, "0.2 (TV)",
+                                                              post_params_all$true_value.compare_true))
+post_params_all$borrowing <- factor(post_params_all$borrowing,
+                                    levels = c("No", "Yes"),
+                                    labels=c("Borrowing: No", "Borrowing: Yes"))
 
-metrics_df <- metrics_post_dist %>%
-  select(treatment.mu, control.mu, control_h.mu, treatment.prob,
-         control.prob, control_h.prob, true_value.compare_true, control.n, borrowing,
-         bias_avg_median_ratio1, sd_avg, sd_empirical, cp) %>%
-  arrange(treatment.mu, control.mu, treatment.prob, control.n)
-
-kbl(metrics_df, escape = F, row.names = F,
-    format    = "html",
-    longtable = T,
-    booktabs  = T,
-    col.names = c("Treatment", "Control", "Historical", "Treatment", "Control","Historical", "True Median Ratio\n(Treatment/Control)<sup>1</sup>", "Sample Size<sup>2</sup>", "Borrowing", "BIAS<sup>3</sup>", "SE<sup>4</sup>", "SD<sup>5</sup>", "CP<sup>6</sup>")) %>%
-  kable_classic(full_width = FALSE) %>%
-  add_header_above(c("Mean of positive g-score median" = 3, "Prob of Zero" = 3, " " = 7)) %>%
-  collapse_rows(columns = 1:8, valign = "top") %>%
-  footnote(number = c("True g-score median of treatment arm over true g-score median of control arm, obtained based on the zero-inflated lognormal distribution (determined by proportion of zeros in both arms)",
-                      "Sample size for each arm.",
-                      "Average bias of the estimated median ratio over 10K simulations.",
-                      "Average standard error of the estimated log median ratio over 10K simulations.",
-                      "Empirical standard deviation of the estimated log median ratio.",
-                      "95% coverage probability under normal distribution."))
+ggplot(post_params_all,
+       aes(x = control.prob.diff, y = control.w_post)) +
+  geom_boxplot(width = 0.6, outlier.size = 0.6, outlier.alpha = 0.5) +
+  facet_grid(true_value.compare_true~control.n, labeller = label_both) +
+  labs(x = "Ratio of the mean of g-score > 0 comparing current to historical control",
+       y = "Posterior weight of borrowing",
+       color = "Prob of g-score = 0 in current control",
+       title = "Mean of g-score > 0 in current control = 0.01, delta for SAM = log(0.85)") +
+  theme_bw() +
+  theme(legend.position = "bottom", strip.text.x = element_text(size=10))
 
 
-p1 <- ggplot(metrics_df, aes(x = control.n, y = bias_avg_median_ratio1, color = borrowing)) +
-  geom_point() +
-  ggh4x::facet_grid2(~treatment.prob + control.prob, labeller = label_both,
-                     scales = "free_y", independent = "y") +
+post_params_all$zeroweight <- ifelse(post_params_all$control.w_post == 0, "zero", "nonzero")
+table(post_params_all$control.prob.diff, post_params_all$zeroweight)
+
+#
+# post_param <- combined_post_params[combined_post_params$control.prob == "0.1", ]
+# post_params <- post_param[1, c("control.w1_post", "control.mu1_post", "control.sigma1_post", "control.mu2_post", "control.sigma2_post")]
+# names(post_params)[1] <- "control.w_post"
+#
+# df <- readRDS("sim_rslt_gscore_decisions_7_8.rds")
+# obtain_ESS <- function(post_params, sigma){
+#
+#   post <- convert_RBesT_mix(post = post_params, endpoint = "g-score")
+#   ess_post <- ess(post, sigma = sigma)
+# }
+#
+#
+#
+
+post_est_ci_all <- bayes_results_all$post_est_ci_all
+
+
+metrics_post_dist_all <- bayes_results_all$metrics_post_dist_all
+metrics_post_dist_all <- metrics_post_dist_all  %>%
+  mutate(across(
+    .cols = -c(borrowing, ends_with(".name")),
+    .fns = as.numeric
+  ))
+metrics_post_dist_all <- metrics_post_dist_all[, c("i", "true_value.compare_true",
+                                                   "control.n", "borrowing",
+                                                   "treatment.prob", "control.prob",
+                                                   "control_h.prob",
+                                                   "delta", "bias_avg_rate_diff",
+                                                   "sd_avg", "sd_empirical", "cp")]
+metrics_post_dist_all$control.prob.diff <- metrics_post_dist_all$control.prob - metrics_post_dist_all$control_h.prob
+metrics_post_dist_all$true_value.compare_true = ifelse(metrics_post_dist_all$true_value.compare_true == 0.1, "0.1 (LRV)",
+                                                       ifelse(metrics_post_dist_all$true_value.compare_true == 0.2, "0.2 (TV)",
+                                                              metrics_post_dist_all$true_value.compare_true))
+metrics_post_dist_all$borrowing <- factor(metrics_post_dist_all$borrowing,
+                                          levels = c("No", "Yes"),
+                                          labels=c("Borrowing: No", "Borrowing: Yes"))
+metrics_df <- metrics_post_dist_all %>%
+  select(control.prob.diff, control.n,true_value.compare_true, borrowing,
+         bias_avg_rate_diff, sd_avg, sd_empirical, cp) %>%
+  arrange(true_value.compare_true, control.n)
+
+metrics_df$control.prob.diff <- factor(metrics_df$control.prob.diff,
+                                       levels = c("-0.2", "-0.1", "0", "0.1", "0.2"),
+                                       labels=c(expression(paste(theta[c], " - ", theta[ch], " = -0.2")),
+                                                expression(paste(theta[c], " - ", theta[ch], " = -0.1")),
+                                                expression(paste(theta[c], " - ", theta[ch], " = 0")),
+                                                expression(paste(theta[c], " - ", theta[ch], " = 0.1")),
+                                                expression(paste(theta[c], " - ", theta[ch], " = 0.2"))))
+metrics_df$true_value.compare_true <- factor(metrics_df$true_value.compare_true,
+                                       levels = c("0.1 (LRV)", "0.15", "0.2 (TV)"),
+                                       labels=c(expression(paste(Delta, " = 0.1")),
+                                                expression(paste(Delta, " = 0.15")),
+                                                expression(paste(Delta, " = 0.2"))))
+metrics_df$control.n <- factor(metrics_df$control.n)
+
+p1 <- ggplot(metrics_df,
+             aes(x = control.n, y = bias_avg_rate_diff, color = borrowing)) +
+  geom_point(size = 2) +
+  facet_grid(true_value.compare_true~control.prob.diff,
+             labeller = labeller(true_value.compare_true = label_parsed,
+                                 control.prob.diff = label_parsed)) +
   geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
-  labs(x = "Sample Size", y = "Bias", title = "Average Bias") +
-  theme_bw()
+  labs(x = "Sample size per arm", y = "BIAS", color= "") +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        strip.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 12))
+
+p3 <- ggplot(metrics_df,
+             aes(x = control.n, color = borrowing, y = cp)) +
+  geom_point(size = 2) +
+  facet_grid(true_value.compare_true~control.prob.diff,
+             labeller = labeller(true_value.compare_true = label_parsed,
+                                 control.prob.diff = label_parsed)) +
+  geom_hline(yintercept = 0.95, color = "red", linetype = "dashed") +
+  labs(x = "Sample size per arm", y = "CP", color = "") +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        strip.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 12))
 
 metrics_long <- metrics_df %>%
   pivot_longer(c(sd_avg, sd_empirical), names_to = "sd_type", values_to = "sd_value")
 
-p2 <- ggplot(metrics_long, aes(x = control.n, y = sd_value, color = borrowing, shape = sd_type)) +
-  geom_point() +
-  facet_grid(~treatment.prob + control.prob, labeller = label_both) +
-  labs(x = "Sample Size", y = "SD", title = "Average SD vs. Empirical SD") +
+p2 <- ggplot(metrics_long,
+             aes(x = control.n, y = sd_value, shape = sd_type, color = borrowing)) +
+  geom_point(position = position_dodge(width = 0.7), size = 2) +
+  ggh4x::facet_grid2(true_value.compare_true~control.prob.diff,
+                     labeller = labeller(true_value.compare_true = label_parsed,
+                                         control.prob.diff = label_parsed)) +
+  labs(x = "Sample size per arm", y = "SD",
+       shape = "",
+       color = "") +
   theme_bw() +
-  theme(legend.position = "bottom")
+  theme(legend.position = "bottom",
+        strip.text = element_text(size = 14),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        legend.text = element_text(size = 11),
+        legend.title = element_text(size = 12))
 
-p3 <- ggplot(metrics_df, aes(x = control.n, color = borrowing, y = cp)) +
-  geom_point() +
-  facet_grid(~treatment.prob + control.prob, labeller = label_both) +
-  geom_hline(yintercept = 0.95, color = "red", linetype = "dashed") +
-  labs(x = "Sample Size", y = "Coverage probability", title = "Coverage Probability") +
-  theme_bw()
+library(patchwork)
+p <- p1 / p2 / p3 +
+  plot_annotation(tag_levels = 'A', tag_prefix = '(', tag_suffix = ')') &
+  theme(strip.text = element_text(size = 13),
+        axis.title = element_text(size = 13),
+        axis.text = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 13),
+        legend.position = "right",
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(-5,-5,-5,0),
+        plot.tag = element_text(size = 14)
+        )
+ggsave(filename = "sim_OR_dist_check_metrics_10_1.jpg", p, width = 9.5, height = 11.5)
 
-p <- p1 / p2 / p3
-
-ggsave(filename = "sim1_dist_check_post_metrics.jpg", p, width = 8, height = 8)
 
 
+metrics_df <- metrics_post_dist_all %>%
+  select(control.prob.diff, control.n,true_value.compare_true, borrowing,
+         bias_avg_rate_diff, sd_avg, sd_empirical, cp) %>%
+  arrange(true_value.compare_true) %>%
+  arrange(borrowing) %>%
+  pivot_wider(names_from = borrowing, values_from = c(bias_avg_rate_diff, sd_avg, sd_empirical, cp)) %>%
+  arrange(control.n) %>%
+  arrange(control.prob.diff)
+metrics_df <- metrics_df[, c("control.prob.diff", "control.n", "true_value.compare_true",
+                             "bias_avg_rate_diff_Borrowing: No", "sd_avg_Borrowing: No",
+                             "sd_empirical_Borrowing: No", "cp_Borrowing: No",
+                             "bias_avg_rate_diff_Borrowing: Yes", "sd_avg_Borrowing: Yes",
+                             "sd_empirical_Borrowing: Yes", "cp_Borrowing: Yes")]
+
+kbl(metrics_df[,-1], escape = F, row.names = F, digits = 3,
+    format    = "latex",
+    booktabs  = T,
+    col.names = c("Sample size", "Delta",
+                  "BIAS", "SE-avg","SD-emp", "CP",
+                  "BIAS", "SE-avg","SD-emp", "CP")) %>%
+  kable_styling(bootstrap_options = c("condensed")) %>%
+  kable_classic(full_width = FALSE) %>%
+  add_header_above(c(" " = 2, "Borrowing: No" = 4, "Borrowing: Yes" = 4)) %>%
+  pack_rows(index = c("Case 1" = 9,
+                      "Case 2" = 9,
+                      "Case 3" = 9,
+                      "Case 4" = 9,
+                      "Case 5" = 9))
 
 
-# Analysis II -------------------------------------------------------------
-
-bayes_results_all <- readRDS("sim2_bayes_results_all_2.rds")
 oc_all <- bayes_results_all$oc_all
-
 oc_all <- oc_all[, c("i", "true_value.compare_true", "control.n", "borrowing",
-                     "treatment.prob", "treatment.mu", "control.prob", "control.mu",
-                     "control_h.prob", "control_h.mu", "decision_pr", "proportion_pr")]
+                     "treatment.prob", "control.prob", "control_h.prob",
+                     "decision_pr", "proportion_pr", "proportion_ci")]
 
+# oc_all$decision_pr <- factor(oc_all$decision_pr, levels = c("no-go", "consider", "go", "NA"))
 oc_all$decision_pr <- factor(oc_all$decision_pr, levels = c("no-go", "consider", "go"))
-oc_all$true_value.compare_true <- round(as.numeric(oc_all$true_value.compare_true),2)
-oc_all$true_value.compare_true = ifelse(oc_all$true_value.compare_true == 0.5, "0.5 (TV)",
-                                        ifelse(oc_all$true_value.compare_true == 0.8, "0.8 (LRV)",
+oc_all$true_value.compare_true = ifelse(oc_all$true_value.compare_true == 0.1, "0.1 (LRV)",
+                                        ifelse(oc_all$true_value.compare_true == 0.2, "0.2 (TV)",
                                                oc_all$true_value.compare_true))
-oc_all$control.mu <- as.numeric(oc_all$control.mu)
-oc_all$control_h.mu <- as.numeric(oc_all$control_h.mu)
-oc_all$control.mu.logdiff <- as.character(round(exp(oc_all$control.mu - oc_all$control_h.mu), 2))
-oc_all$control.mu.diff <- paste0("log(", as.character(oc_all$control.mu.logdiff), ")")
-
+oc_all$control.prob <- as.numeric(oc_all$control.prob)
+oc_all$control_h.prob <- as.numeric(oc_all$control_h.prob)
+oc_all$control.prob.diff <- oc_all$control.prob - oc_all$control_h.prob
 oc_all$borrowing <- factor(oc_all$borrowing,
                            levels = c("No", "Yes"),
                            labels=c("Borrowing: No", "Borrowing: Yes"))
-oc_all$control.mu.logdiff <- as.factor(oc_all$control.mu.logdiff)
 
-metrics <- oc_all[oc_all$true_value.compare_true %in% c("0.5 (TV)", "0.8 (LRV)"),]
-metrics <- oc_all[(oc_all$true_value.compare_true == "0.8 (LRV)" & oc_all$decision_pr == "go") | (oc_all$true_value.compare_true == "0.5 (TV)" & oc_all$decision_pr == "no-go"),]
+metrics <- oc_all[oc_all$true_value.compare_true %in% c("0.2 (TV)", "0.1 (LRV)"),]
+metrics <- oc_all[(oc_all$true_value.compare_true == "0.1 (LRV)" & oc_all$decision_pr == "go") | (oc_all$true_value.compare_true == "0.2 (TV)" & oc_all$decision_pr == "no-go"),]
+false_go_risk <- metrics[metrics$true_value.compare_true == "0.1 (LRV)", c("control.n", "borrowing", "proportion_pr", "control.prob.diff")]
+colnames(false_go_risk)[3] <- "Type I Error (FGR)"
+false_stop_risk <- metrics[metrics$true_value.compare_true == "0.2 (TV)", c("control.n", "borrowing", "proportion_pr", "control.prob.diff")]
+colnames(false_stop_risk)[3] <- "Type II Error (FSR)"
+metrics_df <- merge(false_go_risk, false_stop_risk, by = c("control.n", "borrowing", "control.prob.diff"))
 
-false_go_risk <- metrics[metrics$true_value.compare_true == "0.8 (LRV)", c("control.n", "borrowing", "proportion_pr", "control.mu.logdiff")]
-colnames(false_go_risk)[3] <- "false_go_risk"
-false_stop_risk <- metrics[metrics$true_value.compare_true == "0.5 (TV)", c("control.n", "borrowing", "proportion_pr", "control.mu.logdiff")]
-colnames(false_stop_risk)[3] <- "false_stop_risk"
-metrics_df <- merge(false_go_risk, false_stop_risk, by = c("control.n", "borrowing", "control.mu.logdiff"))
-
-metrics_long <- reshape2::melt(metrics_df, id.vars = c("control.n", "borrowing", "control.mu.logdiff"),
-                     measure.vars = c("false_go_risk", "false_stop_risk"),
+metrics_long <- reshape2::melt(metrics_df, id.vars = c("control.n", "borrowing", "control.prob.diff"),
+                     measure.vars = c("Type I Error (FGR)", "Type II Error (FSR)"),
                      variable.name = "risk_type", value.name = "risk_value")
 
-ggplot(metrics_long,
-       aes(x = control.mu.logdiff, y = risk_value, color = risk_type)) +
-  geom_point() +
+p_risk <- ggplot(metrics_long,
+       aes(x = control.prob.diff, y = risk_value, color = risk_type)) +
+  geom_point(size = 2) +
   facet_grid(borrowing ~ control.n,
              labeller = labeller(
                control.n = function(x) paste("n = ", x))) +
-  labs(title = "FGR and FSR vs. Prior-data Conflict",
-       y = "Risk Value",
-       color = "Risk Type") +
-  xlab(~ paste(theta[c], " / ", theta[ch])) +
-  geom_hline(aes(yintercept = 0.2, color = "false_go_risk"), linetype = "dashed") +  # Horizontal line for false go risk
-  geom_hline(aes(yintercept = 0.1, color = "false_stop_risk"), linetype = "dashed") +
+  labs(y = "Risk Value",
+       color = "") +
+  xlab(~ paste(theta[c], " - ", theta[ch])) +
+  geom_hline(aes(yintercept = 0.2, color = "Type I Error (FGR)"), linetype = "dashed") +  # Horizontal line for false go risk
+  geom_hline(aes(yintercept = 0.1, color = "Type II Error (FSR)"), linetype = "dashed") +
   theme_bw()+
-  theme(legend.position = "bottom", strip.text.x = element_text(size = 10))
-
-ggsave("sim2_pd_conflict_vs_risk.jpg", width = 9, height = 3.5)
-
-ggplot(metrics_long[metrics_long$borrowing == "Borrowing: Yes",],
-       aes(x = control.mu.logdiff, y = risk_value, color = risk_type)) +
-  geom_point() +
-  facet_grid(borrowing ~ control.n,
-             labeller = labeller(
-               control.n = function(x) paste("n = ", x))) +
-  labs(title = "FGR and FSR vs. Prior-data Conflict",
-       y = "Risk Value",
-       color = "Risk Type") +
-  xlab(~ paste(theta[c], " / ", theta[ch])) +
-  geom_hline(aes(yintercept = 0.2, color = "false_go_risk"), linetype = "dashed") +  # Horizontal line for false go risk
-  geom_hline(aes(yintercept = 0.1, color = "false_stop_risk"), linetype = "dashed") +
-  theme_bw()+
-  theme(legend.position = "bottom", strip.text.x = element_text(size = 10))
-
-ggsave("sim2_pd_conflict_vs_risk_borrowing.jpg", width = 9, height = 2.5)
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 13),
+        legend.text = element_text(size = 12),
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(-5,-5,-5,0),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        strip.text = element_text(size = 13)
+        )
+ggsave("sim_OR_conflict_vs_risk_10_1.jpg", width = 7, height = 4)
 
 
 oc_new <- data.frame()
-for (i in seq(1, nrow(oc_all), 3)) {
-  tmp <- oc_all[i:(i+2),]
+oc_tmp <- na.omit(oc_all)
+for (i in seq(1, nrow(oc_tmp), 3)) {
+  tmp <- oc_tmp[i:(i+2),]
   tmp[tmp$decision_pr == "go", "label_ypos"] <- tmp[tmp$decision_pr == "go", "proportion_pr"]
   tmp[tmp$decision_pr == "consider", "label_ypos"] <- tmp[tmp$decision_pr == "go", "proportion_pr"] + tmp[tmp$decision_pr == "consider", "proportion_pr"]
   tmp[tmp$decision_pr == "no-go", "label_ypos"] <- 1
   oc_new <- rbind(oc_new, tmp)
 }
 
-
-# oc_new <- oc_new[oc_new$control.mu.logdiff == "1", c("true_value.compare_true", "control.n", "borrowing", "control.prob", "control.mu.logdiff",
-#                                                      "decision_pr", "proportion_pr", "label_ypos")]
-
 oc_new <- oc_new[, c("true_value.compare_true", "control.n", "borrowing",
-                     "control.prob", "control.mu.logdiff",
+                     "control.prob", "control.prob.diff",
                      "decision_pr", "proportion_pr", "label_ypos")]
-
+oc_new$control.prob.diff <- factor(oc_new$control.prob.diff)
 myColors <- c("red","#F0E442","#009E73")
 names(myColors) <- levels(oc_new$decision_pr)
+oc_new$true_value.compare_true <- factor(oc_new$true_value.compare_true)
+# lines <- data.frame(true_value.compare_true = factor(c("0.1 (LRV)", "0.2 (TV)"),
+#                                                      levels = c("0.1 (LRV)","0.2 (TV)"),
+#                                                      labels = c(expression(paste(Delta, " = 0.1 (LRV)")),
+#                                                                 expression(paste(Delta, " = 0.2 (TV)")))),
+#                     Z = c(0.9, 0.2))
 
-lines <- data.frame(true_value.compare_true = c("0.5 (TV)", "0.8 (LRV)"),
-                    Z = c(0.9, 0.2))
+# p_list <- list()
+# for (i in levels(oc_new$control.prob.diff)) {
+#   oc_tmp <- oc_new[oc_new$control.prob.diff == i, ]
+#   oc_tmp$true_value.compare_true <- factor(oc_tmp$true_value.compare_true ,
+#                                            levels = c("0.1 (LRV)", "0.15", "0.2 (TV)"),
+#                                            labels = c(expression(paste(Delta, " = 0.1 (LRV)")),
+#                                                       expression(paste(Delta, " = 0.15")),
+#                                                       expression(paste(Delta, " = 0.2 (TV)"))))
+#   p_list[[i]] <- ggplot(oc_tmp,
+#                         aes(x = as.factor(control.n), y = proportion_pr, fill = decision_pr)) +
+#     geom_bar(stat = "identity", width = 1) +
+#     geom_text(aes(y = label_ypos, label = scales::percent(proportion_pr, 0.1)), vjust = 1.6,
+#               # fontface = "bold",
+#               size = 3
+#               ) +
+#     scale_fill_manual(name = "Decision", values = myColors)+
+#     facet_grid(true_value.compare_true~borrowing,
+#                labeller = labeller(true_value.compare_true = label_parsed)) +
+#     ggtitle(bquote(theta[c]-theta[ch] == .(i))) +
+#     labs(x = "Sample size per arm", y = "Probability") +
+#     theme(legend.position = "bottom",
+#           title = element_text(size = 12),
+#           legend.text = element_text(size = 10),
+#           axis.text = element_text(size = 9),
+#           strip.text = element_text(size = 12)) +
+#     theme_bw()
+# }
+# library(patchwork)
+# p_oc <- p_list[[1]] + p_list[[2]] + p_list[[3]] + p_list[[4]] + p_list[[5]] +
+#   plot_layout(ncol = 5, guides = "collect") &
+#   theme(legend.position = "bottom",
+#         title = element_text(size = 14),
+#         legend.title = element_text(size = 13),
+#         legend.text = element_text(size = 12),
+#         legend.margin=margin(0,0,0,0),
+#         legend.box.margin=margin(-5,-5,-5,0),
+#         axis.title = element_text(size = 13),
+#         axis.text = element_text(size = 12),
+#         strip.text = element_text(size = 13))
+#
+
 p_list <- list()
-for (i in levels(oc_new$control.mu.logdiff)) {
-  p_list[[i]] <- ggplot(oc_new[oc_new$control.mu.logdiff == i, ],
-         aes(x = as.factor(control.n), y = proportion_pr, fill = decision_pr)) +
+for (i in levels(oc_new$true_value.compare_true)) {
+  oc_tmp <- oc_new[oc_new$true_value.compare_true == i, ]
+  oc_tmp$control.prob.diff <- factor(oc_tmp$control.prob.diff,
+                                     levels = c("-0.2", "-0.1", "0", "0.1", "0.2"),
+                                     labels=c(expression(paste(theta[c], " - ", theta[ch], " = -0.2")),
+                                              expression(paste(theta[c], " - ", theta[ch], " = -0.1")),
+                                              expression(paste(theta[c], " - ", theta[ch], " = 0")),
+                                              expression(paste(theta[c], " - ", theta[ch], " = 0.1")),
+                                              expression(paste(theta[c], " - ", theta[ch], " = 0.2"))))
+  p_list[[i]] <- ggplot(oc_tmp,
+                        aes(x = as.factor(control.n), y = proportion_pr, fill = decision_pr)) +
     geom_bar(stat = "identity", width = 1) +
-    # geom_text(aes(y = label_ypos, label = scales::percent(proportion_pr, 0.1)), vjust = 1.6,
-    #           size = 1.2, fontface = "bold") +
+    geom_text(aes(y = label_ypos, label = scales::percent(proportion_pr, 0.1)), vjust = 1.6,
+              # fontface = "bold",
+              size = 3.2) +
     scale_fill_manual(name = "Decision", values = myColors)+
-    facet_grid(true_value.compare_true~borrowing,
-               labeller = labeller(
-                 true_value.compare_true = function(x) paste("True median ratio =", x))) +
-    geom_hline(data = lines, aes(yintercept = Z), linetype = "dashed") +
-    ggtitle(bquote(theta[c] / theta[ch] == .(i))) +
-    labs(x = "Number of patients per arm", y = "Probability") +
+    facet_grid(control.prob.diff~borrowing,
+               labeller = labeller(control.prob.diff = label_parsed)) +
+    ggtitle(bquote(Delta == .(i))) +
+    labs(x = "Sample size per arm", y = "Probability") +
     theme(legend.position = "bottom",
           title = element_text(size = 12),
           legend.text = element_text(size = 10),
@@ -536,96 +483,97 @@ for (i in levels(oc_new$control.mu.logdiff)) {
     theme_bw()
 }
 library(patchwork)
-p_list[[1]] + p_list[[2]] + p_list[[3]] + p_list[[4]] + p_list[[5]] +
-  plot_annotation(title = "Probability of Each Decision Under Various Sample Sizes") +
-  plot_layout(ncol = 5, guides = "collect") &
+p_oc <- p_list[[1]] + p_list[[2]] + p_list[[3]] +
+  plot_layout(ncol = 3, guides = "collect") &
   theme(legend.position = "bottom",
-        title = element_text(size = 10),
-        legend.text = element_text(size = 11),
-        axis.text = element_text(size = 9),
-        strip.text.y = element_text(size = 9),
-        strip.text.x = element_text(size = 9) )
-ggsave("sim2_zone_size.jpg", width = 15, height = 5.5)
-
-
-p_list <- list()
-for (i in levels(oc_new$borrowing)) {
-  oc_tmp <- oc_new[oc_new$borrowing == i, ]
-  oc_tmp$control.mu.logdiff <- factor(oc_tmp$control.mu.logdiff,
-                                      levels = c("0.6", "0.8", "1", "1.25", "1.67"),
-                                      labels=c(expression(paste(theta[c], "/", theta[ch], " = 0.6")),
-                                               expression(paste(theta[c], "/", theta[ch], " = 0.8")),
-                                               expression(paste(theta[c], "/", theta[ch], " = 1")),
-                                               expression(paste(theta[c], "/", theta[ch], " = 1.25")),
-                                               expression(paste(theta[c], "/", theta[ch], " = 1.67"))))
-  oc_tmp$true_value.compare_true <- paste0("True median ratio = ", oc_tmp$true_value.compare_true)
-  p_list[[i]] <- ggplot(oc_tmp,
-                        aes(x = as.factor(control.n), y = proportion_pr, color = decision_pr)) +
-    geom_point() +
-    scale_color_manual(name = "Decision", values = myColors) +
-    facet_grid(true_value.compare_true ~ control.mu.logdiff,
-               labeller = labeller(control.mu.logdiff = label_parsed)) +
-    ggtitle(i) +
-    labs(x = "Number of patients per arm", y = "Probability") +
-    theme(legend.position = "bottom",
-          title = element_text(size = 12),
-          legend.text = element_text(size = 12),
-          axis.text = element_text(size = 9),
-          strip.text = element_text(size = 13)) +
-    theme_bw()
-}
-
-p_list[[1]] + p_list[[2]] +
-  plot_layout(ncol = 2, guides = "collect") &
-  theme(legend.position = "bottom",
-        title = element_text(size = 12),
+        title = element_text(size = 15),
+        legend.title = element_text(size = 13),
         legend.text = element_text(size = 12),
-        axis.text = element_text(size = 9),
-        strip.text.y = element_text(size = 10),
-        strip.text.x = element_text(size = 11) )
+        legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(-5,-5,-5,0),
+        axis.title = element_text(size = 13),
+        axis.text = element_text(size = 12),
+        strip.text = element_text(size = 13))
+ggsave("sim_OR_zone_size_10_1.jpg",p_oc, width = 14, height = 8)
 
-ggsave("sim2_zone_size_2.jpg", width = 12.5, height = 5.8)
 
-oc2 <- oc_new %>%
-  select(-c(label_ypos, control.prob)) %>%
+# p_list <- list()
+# for (i in levels(oc_new$borrowing)) {
+#   oc_tmp <- oc_new[oc_new$borrowing == i, ]
+#   oc_tmp$control.prob.diff <- factor(oc_tmp$control.prob.diff,
+#                                       levels = c("-0.2", "-0.1", "0", "0.1", "0.2"),
+#                                       labels=c(expression(paste(theta[c], " - ", theta[ch], " = -0.2")),
+#                                                expression(paste(theta[c], " - ", theta[ch], " = -0.1")),
+#                                                expression(paste(theta[c], " - ", theta[ch], " = 0")),
+#                                                expression(paste(theta[c], " - ", theta[ch], " = 0.1")),
+#                                                expression(paste(theta[c], " - ", theta[ch], " = 0.2"))))
+#   oc_tmp$true_value.compare_true <- factor(oc_tmp$true_value.compare_true ,
+#                                            levels = c("0.1 (LRV)", "0.15", "0.2 (TV)"),
+#                                            labels = c(expression(paste(Delta, " = 0.1 (LRV)")),
+#                                                       expression(paste(Delta, " = 0.15")),
+#                                                       expression(paste(Delta, " = 0.2 (TV)"))))
+#
+#   p_list[[i]] <- ggplot(oc_tmp,
+#                         aes(x = as.factor(control.n), y = proportion_pr, color = decision_pr)) +
+#     geom_point() +
+#     scale_color_manual(name = "Decision", values = myColors) +
+#     facet_grid(true_value.compare_true ~ control.prob.diff,
+#                labeller = labeller(control.prob.diff = label_parsed,
+#                                    true_value.compare_true = label_parsed)) +
+#     ggtitle(i) +
+#     labs(x = "Number of patients per arm", y = "Probability") +
+#     theme(legend.position = "bottom",
+#           title = element_text(size = 12),
+#           legend.text = element_text(size = 12),
+#           axis.text = element_text(size = 9),
+#           strip.text = element_text(size = 13)) +
+#     theme_bw()
+# }
+#
+# p_list[[1]] + p_list[[2]] +
+#   plot_layout(ncol = 2, guides = "collect") &
+#   theme(legend.position = "bottom",
+#         title = element_text(size = 12),
+#         legend.text = element_text(size = 12),
+#         axis.text = element_text(size = 9),
+#         strip.text.y = element_text(size = 10),
+#         strip.text.x = element_text(size = 11) )
+
+
+
+oc2 <- oc_all %>%
+  select(control.prob.diff, control.n, true_value.compare_true, borrowing, decision_pr, proportion_pr) %>%
   mutate(proportion_pr = scales::percent(proportion_pr, 0.1)) %>%
   arrange(decision_pr) %>%
-  arrange(control.mu.logdiff) %>%
   arrange(true_value.compare_true) %>%
   arrange(borrowing) %>%
   pivot_wider(names_from = c(decision_pr, borrowing), values_from = proportion_pr) %>%
-  arrange(control.n)
+  arrange(control.n) %>%
+  arrange(control.prob.diff)
 
 oc2$`no-go_Borrowing: No` = cell_spec(oc2$`no-go_Borrowing: No`,
-                           background = ifelse(oc2$true_value.compare_true == "0.5 (TV)", "steelblue2", "white"))
+                                      background = ifelse(oc2$true_value.compare_true == "0.2 (TV)", "steelblue2", "white"))
 
 oc2$`no-go_Borrowing: Yes` = cell_spec(oc2$`no-go_Borrowing: Yes`,
-                            background = ifelse(oc2$true_value.compare_true == "0.5 (TV)", "steelblue2", "white"))
+                                       background = ifelse(oc2$true_value.compare_true == "0.2 (TV)", "steelblue2", "white"))
 
 oc2$`go_Borrowing: No` = cell_spec(oc2$`go_Borrowing: No`,
-                        background = ifelse(oc2$true_value.compare_true == "0.8 (LRV)", "pink", "white"))
+                                   background = ifelse(oc2$true_value.compare_true == "0.1 (LRV)", "pink", "white"))
 
 oc2$`go_Borrowing: Yes` = cell_spec(oc2$`go_Borrowing: Yes`,
-                         background = ifelse(oc2$true_value.compare_true == "0.8 (LRV)", "pink", "white"))
+                                    background = ifelse(oc2$true_value.compare_true == "0.1 (LRV)", "pink", "white"))
 
-for (i in levels(oc2$control.mu.logdiff)) {
-  kbl(oc2[oc2$control.mu.logdiff == i, c(2,1,4:ncol(oc2))], escape = F,
-      col.names = c("Sample Size", "True value",
-                    rep(c("No-Go", "Consider","Go"), 2))) %>%
-    kable_classic(full_width = FALSE) %>%
-    add_header_above(c(" " = 2, "Borrowing: No" = 3, "Borrowing: Yes" = 3)) %>%
-    column_spec(1, bold = T) %>%
-    collapse_rows(columns = 1:2, valign = "top")  %>%
-    save_kable(paste0("oc_", i, ".png"),
-               zoom = 1.5)
-
-}
-
-
-
-
-
-
-
+kbl(oc2[,-1], escape = F, row.names = F, digits = 3,
+    format    = "latex",
+    booktabs  = T,
+    col.names = c("n", "Delta", rep(c("Pr(No-Go)", "Pr(Consider)","Pr(Go)"), 2))) %>%
+  kable_styling(bootstrap_options = c("condensed")) %>%
+  kable_classic(full_width = FALSE) %>%
+  add_header_above(c(" " = 2, "Borrowing: No" = 3, "Borrowing: Yes" = 3)) %>%
+  pack_rows(index = c("Case 1:" = 9,
+                      "Case 2:" = 9,
+                      "Case 3:" = 9,
+                      "Case 4:" = 9,
+                      "Case 5:" = 9))
 
 

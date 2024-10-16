@@ -44,12 +44,21 @@ posterior_prob <- function(post1, value, post2 = NULL, range_type = c("greater",
     }
   } else {
     if (range_type == "greater") {
-      return(pmixdiff(post1, post2, value, FALSE)) # Pr( post1 - post2 > value)
+      return(tryCatch(
+        pmixdiff(post1, post2, value, FALSE),
+        error = function(e) NA
+      )) # Pr( post1 - post2 > value)
     } else if (range_type == "less") {
-      return(pmixdiff(post1, post2, value)) # Pr( post1 - post2 < value)
+      return(tryCatch(
+        pmixdiff(post1, post2, value),
+        error = function(e) NA
+      )) # Pr( post1 - post2 < value)
     } else if (range_type == "between") {
       if (is.null(value2)) stop("value2 must be provided for range_type 'between'")
-      return(pmixdiff(post1, post2, value2) - pmixdiff(post1, post2, value)) # Pr( value2 > post1 - post2 > value)
+      return(tryCatch(
+        pmixdiff(post1, post2, value2) - pmixdiff(post1, post2, value),
+        error = function(e) NA
+      )) # Pr( value2 > post1 - post2 > value)
     }
   }
 }

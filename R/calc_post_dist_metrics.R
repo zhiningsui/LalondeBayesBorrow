@@ -28,8 +28,10 @@
 #' calc_post_dist_metrics("g-score", true_value = 1.2, post_est_ci = post_inference_result)
 calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci) {
   if (endpoint == "g-score") {
+
+    delta <- true_value
     # Parameter of interest: log_delta = log(theta_t/theta_c)
-    log_delta <- log(true_value)
+    log_delta <- log(delta)
 
     # Point estimate for each run: log_delta_hat = log(theta_t_hat) - log(theta_c_hat)
     log_delta_hat <- log(post_est_ci$est1) - log(post_est_ci$est2)
@@ -38,9 +40,9 @@ calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci) {
     bias_avg <- mean(log_delta_hat - log_delta)
 
     # Average Bias of estimated median ratio
-    bias_avg_median_ratio1 <- exp(mean(log_delta_hat)) - true_value
+    bias_avg_median_ratio1 <- exp(mean(log_delta_hat)) - delta
     median_ratio_hat <- post_est_ci$est_compare
-    bias_avg_median_ratio2 <- mean(median_ratio_hat - true_value)
+    bias_avg_median_ratio2 <- mean(median_ratio_hat - delta)
 
     # Average SD (i.e., SE) of log_delta_hat
     sds <- post_est_ci$sd_compare

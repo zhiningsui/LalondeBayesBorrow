@@ -13,15 +13,14 @@
 #'
 #' @examples
 #' # Example usage:
-#' settings <- data.frame(setting1 = "A", setting2 = "B")
 #' decisions <- data.frame(decision_pr = c("go", "no-go", "consider"),
 #'                         decision_ci = c("go", "no-go", "consider"))
-#' obtain_OC(settings, decisions)
+#' obtain_oc(decisions)
 #'
 #' @import dplyr
 #' @import tidyr
 #' @importFrom rlang .data
-obtain_OC <- function(settings, decisions){
+obtain_oc <- function(decisions){
   # Proportion of decisions made based on the posterior probability
   proportion_pr <- decisions %>%
     group_by(.data$decision_pr) %>%
@@ -37,6 +36,6 @@ obtain_OC <- function(settings, decisions){
              fill = list(count_ci = 0)) %>%
     mutate(proportion_ci = .data$count_ci / sum(.data$count_ci, na.rm = TRUE))
 
-  OC <- cbind(settings, cbind(proportion_pr, proportion_ci))
+  OC <- full_join(proportion_pr, proportion_ci, by = c("decision_pr" = "decision_ci"))
   return(OC)
 }

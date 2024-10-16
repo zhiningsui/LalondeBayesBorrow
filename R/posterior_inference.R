@@ -67,11 +67,15 @@ posterior_inference <- function(post1, post2 = NULL, quantiles, EXP_TRANSFORM = 
       result1$est - result2$est
     }
 
-    conf_compare <- if (EXP_TRANSFORM) {
-      exp(qmixdiff(post1, post2, quantiles))
-    } else {
-      qmixdiff(post1, post2, quantiles)
-    }
+    conf_compare <- tryCatch({
+      if (EXP_TRANSFORM) {
+        exp(qmixdiff(post1, post2, quantiles))
+      } else {
+        qmixdiff(post1, post2, quantiles)
+      }
+    }, error = function(e) {
+      NA
+    })
 
     sd_compare <- sqrt((result1$sd)^2 +(result2$sd)^2)
 

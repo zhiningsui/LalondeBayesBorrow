@@ -11,7 +11,8 @@ posterior_distribution(
   delta = log(0.85),
   w = NULL,
   a = NULL,
-  b = NULL
+  b = NULL,
+  gate = NULL
 )
 }
 \arguments{
@@ -35,6 +36,8 @@ posterior_distribution(
 \item{a}{A scalar. The alpha parameter of the beta prior for binary endpoints (used in the mixture prior if borrowing).}
 
 \item{b}{A scalar. The beta parameter of the beta prior for binary endpoints (used in the mixture prior if borrowing).}
+
+\item{gate}{A scalar.}
 }
 \value{
 A list containing the posterior distribution parameters:

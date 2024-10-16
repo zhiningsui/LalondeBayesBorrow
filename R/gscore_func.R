@@ -108,7 +108,7 @@ eval_gscore_approx_dist <- function(sim_data){
   # Parameter of interest: log(delta) = log(theta_t/theta_c) = mu_t - mu_c
   log_delta = log(delta)
 
-  # Point estimate of log_delta for each run: log_delta_hat = log(theta_t_hat) - log(theta_c_hat)
+  # Point estimate of log_delta for each run: log_delta_hat = log(theta_t_hat) - log(theta_c_hat) = mu_t_hat - mu_c_hat
   median_est_wide <- sim_data$median_est %>%
     dplyr::filter(.data$arm %in% c("treatment", "control")) %>%
     pivot_wider(

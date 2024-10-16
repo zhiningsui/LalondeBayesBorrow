@@ -163,14 +163,16 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
                                       delta = prior_params[["control.delta"]],
                                       w = prior_params[["control.w"]],
                                       a = prior_params[["control.a"]],
-                                      b = prior_params[["control.b"]])
+                                      b = prior_params[["control.b"]],
+                                      gate = prior_params[["control.gate"]])
     post_t <-  posterior_distribution(endpoint,
                                       current = current_trt,
                                       historical = historical_trt,
                                       delta = prior_params[["treatment.delta"]],
                                       w = prior_params[["treatment.w"]],
                                       a = prior_params[["treatment.a"]],
-                                      b = prior_params[["treatment.b"]])
+                                      b = prior_params[["treatment.b"]],
+                                      gate = prior_params[["treatment.gate"]])
 
     post_params_i <- c(unlist(post_t$post), unlist(post_c$post))
     names(post_params_i) <- c(paste0("treatment.", names(post_t$post), "_post"), paste0("control.", names(post_c$post), "_post"))
