@@ -4,7 +4,7 @@
 \alias{calc_post_dist_metrics}
 \title{Calculate Posterior Distribution Metrics}
 \usage{
-calc_post_dist_metrics(endpoint, true_value, post_est_ci)
+calc_post_dist_metrics(endpoint, true_value, post_est_ci, remove.na = FALSE)
 }
 \arguments{
 \item{endpoint}{A string. Specifies the type of endpoint ("g-score" or "OR").}
@@ -12,6 +12,8 @@ calc_post_dist_metrics(endpoint, true_value, post_est_ci)
 \item{true_value}{A scalar. The true median ratio for the "g-score" endpoint or the true rate difference for the "OR" endpoint.}
 
 \item{post_est_ci}{A data frame. Contains posterior inference obtained from `bayesian_lalonde_decision()`, including posterior estimates, standard errors, and 95\% credible intervals for each simulation repetition.}
+
+\item{remove.na}{}
 }
 \value{
 A data frame containing the evaluation metrics for the posterior distribution, including:

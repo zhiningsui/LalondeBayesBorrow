@@ -3,6 +3,103 @@ library(LalondeBayesBorrow)
 library(dplyr)
 library(tidyverse)
 
+# Convert to Beta params
+mu_star <- (mu_h + 100) / 200
+sigma_star <- sigma_h / 200
+nu <- mu_star * (1 - mu_star) / sigma_star^2 - 1
+alpha <- mu_star * nu
+beta <- (1 - mu_star) * nu
+
+# Simulate 1 historical dataset
+X_h <- rbeta(n_h, alpha, beta)
+Y_h <- -100 + 200 * X_h
+
+
+
+
+
+# Simulation I: Prior-Data Conflict ------------------------------------------------------------
+
+# Define historical control data
+param_grid_h <- expand.grid(
+  ctrl_h_n = 200,
+  ctrl_h_mu = 20,
+  ctrl_h_sigma = 20,
+  stringsAsFactors = FALSE
+)
+
+data_gen_params_list_h <- lapply(apply(param_grid_h, 1, as.list), create_data_gen_params, endpoint = "ptss")
+data_gen_params_h <- data_gen_params_list_h[[1]]
+control_h <- data_gen_params_h$control_h
+
+n_list <- c(control_h$n)
+mu_list <- c(control_h$mu)
+sigma_list <- c(control_h$sigma)
+arm_names <- c("control_h")
+
+data_h <- data_gen_ptss(
+  n_arms = 1,
+  nsim = 10000,
+  n_list = setNames(n_list, arm_names),
+  mu_list = setNames(mu_list, arm_names),
+  sigma_list = setNames(sigma_list, arm_names),
+  arm_names = arm_names
+)
+
+# Extract simulated values
+y_h <- data_h$data$ptss
+mu_h <- mean(y_h)
+tau2_h <- var(y_h) / length(y_h)  # This is your SAM prior variance
+
+
+
+# Define current trial configurations
+param_grid <- expand.grid(
+  trt_n = c(20, 30, 40),
+  ctrl_n = c(20, 30, 40),
+  ctrl_mu = c(10, 15, 20, 25, 30),
+  trt_mu = c(25, 30, 35, 40),
+  trt_sigma = 20,
+  ctrl_sigma = 20,
+  stringsAsFactors = FALSE
+) %>%
+  filter(trt_n == ctrl_n)
+
+# Create parameter lists
+param_grid_h_list <- lapply(apply(param_grid_h, 1, as.list), create_data_gen_params, endpoint = "ptss")
+param_grid_list <- lapply(apply(param_grid, 1, as.list), create_data_gen_params, endpoint = "ptss")
+
+# Define borrowing scenarios
+prior_params_list <- list(
+  Yes = list(control.delta = 5, control.gate = 5, treatment.w = 0, control.w = NULL),
+  No  = list(control.delta = 5, treatment.w = 0, control.w = 0)
+)
+
+# Run Simulation ----------------------------------------------------------
+
+nsim <- 10000
+all_historical_est <- lapply(seq_along(param_grid_h_list), function(i) {
+  data_gen_params <- param_grid_h_list[[i]]
+  arm_names <- names(data_gen_params)
+  n_list <- sapply(data_gen_params, function(x) x$n)
+  alpha_list <- sapply(data_gen_params, function(x) x$alpha)
+  beta_list <- sapply(data_gen_params, function(x) x$beta)
+
+  sim_data <- data_gen_ptss(n_arms = length(data_gen_params), nsim = nsim,
+                            n_list = n_list, alpha_list = alpha_list, beta_list = beta_list,
+                            arm_names = arm_names)
+
+  data.frame(
+    arm = "control_h",
+    n = n,
+    median_log = mean(log(pmax(sim_vals + 100, 1e-4))),
+    median_sd = sd(log(pmax(sim_vals + 100, 1e-4)))
+  )
+})
+
+
+
+
 # Simulation I ------------------------------------------------------------
 
 param_grid_h <- expand.grid(
@@ -565,6 +662,7 @@ for(j in seq_along(all_historical_est)){
     prob_list <- sapply(data_gen_params, function(x) x$prob)
     mu_list <- sapply(data_gen_params, function(x) x$mu)
     sigma_list <- sapply(data_gen_params, function(x) x$sigma)
+
 
     # Generate simulation dataset
     data <- data_gen_gscore(n_arms = n_arms, arm_names = arm_names,

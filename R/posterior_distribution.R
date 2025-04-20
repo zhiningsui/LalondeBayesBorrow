@@ -73,10 +73,11 @@ posterior_distribution <- function(endpoint, current, historical = NULL, delta =
     }
 
     nh <- historical["n"]
-    y <- current["mu_hat"]
-    s <- current["s"]
     yh <- historical["mu_hat"]
     sh <- historical["s"]
+
+    y <- current["mu_hat"]
+    s <- current["s"]
 
     # if gate is given, consider gate value before any borrowing
     if (!is.null(gate)) {

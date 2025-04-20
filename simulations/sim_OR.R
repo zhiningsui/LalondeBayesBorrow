@@ -110,14 +110,25 @@ for (i in seq_along(data_gen_params_list)) {
   }
 }
 
+# for (i in seq_along(bayes_results)) {
+#   res <- bayes_results[[i]]$post_est_ci %>%
+#     na.omit()
+#
+#   metrics_post_dist <- calc_post_dist_metrics(endpoint = "OR",
+#                                               true_value = bayes_results[[i]]$settings$true_value.compare_true,
+#                                               res)
+#   bayes_results[[i]]$metrics_post_dist_no_na <- metrics_post_dist
+# }
 
-# saveRDS(bayes_results, file = "sim_OR_bayes_results_10_1.rds")
-# bayes_results <- readRDS("sim_OR_bayes_results_10_1.rds")
+
+# saveRDS(bayes_results, file = "sim_OR_bayes_results_10_10.rds")
+# bayes_results <- readRDS("sim_OR_bayes_results_10_10.rds")
 
 post_params_all <- data.frame()
 post_est_ci_all <- data.frame()
 post_inference_all <- data.frame()
 metrics_post_dist_all <- data.frame()
+metrics_post_dist_no_na_all <- data.frame()
 oc_all <- data.frame()
 for (i in seq_along(bayes_results)) {
   res <- bayes_results[[i]]
@@ -126,30 +137,40 @@ for (i in seq_along(bayes_results)) {
   post_est_ci <- cbind(setting, res$post_est_ci)
   post_inference <- cbind(setting, res$post_inference)
   metrics_post_dist <- cbind(setting, res$metrics_post_dist)
+
+  metrics_post_dist_no_na <- calc_post_dist_metrics(endpoint = "OR",
+                                                    true_value = setting$true_value.compare_true,
+                                                    post_est_ci = res$post_est_ci, remove.na = T)
+  metrics_post_dist_no_na <- cbind(setting, metrics_post_dist_no_na)
+
+  post_inference$decision_pr <- ifelse(is.na(post_inference$decision_pr), post_inference$decision_ci, post_inference$decision_pr)
+  post_inference$decision_ci <- ifelse(is.na(post_inference$decision_ci), post_inference$decision_pr, post_inference$decision_ci)
+
   oc <- cbind(setting, obtain_oc(post_inference))
 
   post_params_all <- bind_rows(post_params_all, cbind(i, post_params))
   post_est_ci_all <- bind_rows(post_est_ci_all, cbind(i, post_est_ci))
   post_inference_all <- bind_rows(post_inference_all, cbind(i, post_inference))
   metrics_post_dist_all <- bind_rows(metrics_post_dist_all, cbind(i, metrics_post_dist))
+  metrics_post_dist_no_na_all <- bind_rows(metrics_post_dist_no_na_all, cbind(i,metrics_post_dist_no_na))
   oc_all <- bind_rows(oc_all, cbind(i, oc))
 }
 
 bayes_results_all <- list(
   metrics_post_dist_all = metrics_post_dist_all,
+  metrics_post_dist_no_na_all = metrics_post_dist_no_na_all,
   post_params_all = post_params_all,
   post_est_ci_all = post_est_ci_all,
   post_inference_all = post_inference_all,
   oc_all = oc_all
 )
 
-# saveRDS(bayes_results_all, "sim_OR_bayes_results_df_10_1.rds")
-
+saveRDS(bayes_results_all, "sim_OR_bayes_results_df_10_10.rds")
 
 
 # Analysis ----------------------------------------------------------------
 
-bayes_results_all <- readRDS("simulations/sim_OR_bayes_results_df_10_1.rds")
+bayes_results_all <- readRDS("sim_OR_bayes_results_df_10_10.rds")
 
 ## Check posterior parameters
 post_params_all <- bayes_results_all$post_params_all
@@ -196,11 +217,8 @@ table(post_params_all$control.prob.diff, post_params_all$zeroweight)
 #
 #
 #
-
-post_est_ci_all <- bayes_results_all$post_est_ci_all
-
-
-metrics_post_dist_all <- bayes_results_all$metrics_post_dist_all
+metrics_post_dist_all <- bayes_results_all$metrics_post_dist_no_na_all
+metrics_post_dist_no_na_all <- bayes_results_all$metrics_post_dist_no_na_all
 metrics_post_dist_all <- metrics_post_dist_all  %>%
   mutate(across(
     .cols = -c(borrowing, ends_with(".name")),
@@ -240,7 +258,7 @@ metrics_df$control.n <- factor(metrics_df$control.n)
 
 p1 <- ggplot(metrics_df,
              aes(x = control.n, y = bias_avg_rate_diff, color = borrowing)) +
-  geom_point(size = 2) +
+  geom_point(position = position_dodge(width = 0.1), size = 2) +
   facet_grid(true_value.compare_true~control.prob.diff,
              labeller = labeller(true_value.compare_true = label_parsed,
                                  control.prob.diff = label_parsed)) +
@@ -256,7 +274,7 @@ p1 <- ggplot(metrics_df,
 
 p3 <- ggplot(metrics_df,
              aes(x = control.n, color = borrowing, y = cp)) +
-  geom_point(size = 2) +
+  geom_point(position = position_dodge(width = 0.1), size = 2) +
   facet_grid(true_value.compare_true~control.prob.diff,
              labeller = labeller(true_value.compare_true = label_parsed,
                                  control.prob.diff = label_parsed)) +
@@ -303,7 +321,23 @@ p <- p1 / p2 / p3 +
         legend.box.margin=margin(-5,-5,-5,0),
         plot.tag = element_text(size = 14)
         )
-ggsave(filename = "sim_OR_dist_check_metrics_10_1.jpg", p, width = 9.5, height = 11.5)
+p
+ggsave(filename = "sim_OR_dist_check_metrics_10_10.jpg", p, width = 9.5, height = 11.5)
+
+p <- p1 / p3 +
+  plot_layout(guides = "collect") +
+  plot_annotation(tag_levels = 'A', tag_prefix = '(', tag_suffix = ')') &
+  theme(strip.text = element_text(size = 15),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        legend.text = element_text(size = 16),
+        legend.title = element_text(size = 15),
+        legend.position = "bottom",
+        # legend.margin=margin(0,0,0,0),
+        # legend.box.margin=margin(-5,-5,-5,0),
+        plot.tag = element_text(size = 17)
+  )
+ggsave(filename = "sim_OR_dist_check_metrics.jpg", p, width = 8.5, height = 8.5)
 
 
 
@@ -341,12 +375,42 @@ oc_all <- bayes_results_all$oc_all
 oc_all <- oc_all[, c("i", "true_value.compare_true", "control.n", "borrowing",
                      "treatment.prob", "control.prob", "control_h.prob",
                      "decision_pr", "proportion_pr", "proportion_ci")]
+# oc_new <- data.frame()
+# for (i in unique(oc_all$i)) {
+#   oc_tmp <- oc_all[oc_all$i == i,]
+#   # Check if there are any NA values in the 'decision_pr' column
+#   if (sum(is.na(oc_tmp$decision_pr)) > 0) {
+#     oc_na <- oc_tmp[is.na(oc_tmp$decision_pr), ]
+#
+#     if (sum(is.na(oc_na$proportion_pr)) < sum(is.na(oc_na$proportion_ci))) {
+#       oc_tmp$proportion <- oc_tmp$proportion_pr
+#     } else if (sum(is.na(oc_na$proportion_ci)) < sum(is.na(oc_na$proportion_pr))) {
+#       oc_tmp$proportion <- oc_tmp$proportion_ci
+#     } else {
+#       if (oc_na$proportion_ci < oc_na$proportion_pr) {
+#         oc_tmp$proportion <- oc_tmp$proportion_ci
+#       } else {
+#         oc_tmp$proportion <- oc_tmp$proportion_pr
+#       }
+#     }
+#   }
+#
+#
+#   }else{
+#     oc_new <- cbind(oc_new, oc_tmp)
+#   }
+#
+# }
+# oc_all$proportion <- ifelse(!is.na(oc_all$decision_pr), oc_all$proportion_pr,
+#                             ifelse(is.na(oc_all$proportion_ci), oc_all$proportion_pr, oc_all$proportion_ci))
+
 
 # oc_all$decision_pr <- factor(oc_all$decision_pr, levels = c("no-go", "consider", "go", "NA"))
 oc_all$decision_pr <- factor(oc_all$decision_pr, levels = c("no-go", "consider", "go"))
 oc_all$true_value.compare_true = ifelse(oc_all$true_value.compare_true == 0.1, "0.1 (LRV)",
                                         ifelse(oc_all$true_value.compare_true == 0.2, "0.2 (TV)",
                                                oc_all$true_value.compare_true))
+
 oc_all$control.prob <- as.numeric(oc_all$control.prob)
 oc_all$control_h.prob <- as.numeric(oc_all$control_h.prob)
 oc_all$control.prob.diff <- oc_all$control.prob - oc_all$control_h.prob
@@ -387,7 +451,7 @@ p_risk <- ggplot(metrics_long,
         axis.text = element_text(size = 12),
         strip.text = element_text(size = 13)
         )
-ggsave("sim_OR_conflict_vs_risk_10_1.jpg", width = 7, height = 4)
+ggsave("sim_OR_conflict_vs_risk.jpg", width = 7, height = 4)
 
 
 oc_new <- data.frame()
@@ -494,7 +558,7 @@ p_oc <- p_list[[1]] + p_list[[2]] + p_list[[3]] +
         axis.title = element_text(size = 13),
         axis.text = element_text(size = 12),
         strip.text = element_text(size = 13))
-ggsave("sim_OR_zone_size_10_1.jpg",p_oc, width = 14, height = 8)
+ggsave("sim_OR_zone_size.jpg",p_oc, width = 14, height = 8)
 
 
 # p_list <- list()
@@ -551,19 +615,19 @@ oc2 <- oc_all %>%
   arrange(control.n) %>%
   arrange(control.prob.diff)
 
-oc2$`no-go_Borrowing: No` = cell_spec(oc2$`no-go_Borrowing: No`,
-                                      background = ifelse(oc2$true_value.compare_true == "0.2 (TV)", "steelblue2", "white"))
+# oc2$`no-go_Borrowing: No` = cell_spec(oc2$`no-go_Borrowing: No`,
+#                                       background = ifelse(oc2$true_value.compare_true == "0.2 (TV)", "steelblue2", "white"))
+#
+# oc2$`no-go_Borrowing: Yes` = cell_spec(oc2$`no-go_Borrowing: Yes`,
+#                                        background = ifelse(oc2$true_value.compare_true == "0.2 (TV)", "steelblue2", "white"))
+#
+# oc2$`go_Borrowing: No` = cell_spec(oc2$`go_Borrowing: No`,
+#                                    background = ifelse(oc2$true_value.compare_true == "0.1 (LRV)", "pink", "white"))
+#
+# oc2$`go_Borrowing: Yes` = cell_spec(oc2$`go_Borrowing: Yes`,
+#                                     background = ifelse(oc2$true_value.compare_true == "0.1 (LRV)", "pink", "white"))
 
-oc2$`no-go_Borrowing: Yes` = cell_spec(oc2$`no-go_Borrowing: Yes`,
-                                       background = ifelse(oc2$true_value.compare_true == "0.2 (TV)", "steelblue2", "white"))
-
-oc2$`go_Borrowing: No` = cell_spec(oc2$`go_Borrowing: No`,
-                                   background = ifelse(oc2$true_value.compare_true == "0.1 (LRV)", "pink", "white"))
-
-oc2$`go_Borrowing: Yes` = cell_spec(oc2$`go_Borrowing: Yes`,
-                                    background = ifelse(oc2$true_value.compare_true == "0.1 (LRV)", "pink", "white"))
-
-kbl(oc2[,-1], escape = F, row.names = F, digits = 3,
+kbl(oc2[,-1], escape = T, row.names = F, digits = 3,
     format    = "latex",
     booktabs  = T,
     col.names = c("n", "Delta", rep(c("Pr(No-Go)", "Pr(Consider)","Pr(Go)"), 2))) %>%

@@ -215,10 +215,17 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
       lrv_adj <- if (EXP_TRANSFORM) log(lrv) else lrv
       tv_adj <- if (EXP_TRANSFORM) log(tv) else tv
 
-      pr_m <- posterior_prob(post_t_mix, lrv_adj, post_c_mix, range_type = ifelse(lrv < tv, "less", "greater"))
-      pr_l <- posterior_prob(post_t_mix, ifelse(lrv < tv, lrv_adj, tv_adj), post_c_mix, range_type = "between",
+      pr_m <- posterior_prob(post1 = post_t_mix,
+                             value = lrv_adj,
+                             post2 = post_c_mix,
+                             range_type = ifelse(lrv < tv, "less", "greater"))
+      pr_l <- posterior_prob(post1 = post_t_mix,
+                             value = ifelse(lrv < tv, lrv_adj, tv_adj),
+                             post2 = post_c_mix, range_type = "between",
                              value2 = ifelse(lrv < tv, tv_adj, lrv_adj))
-      pr_t <- posterior_prob(post_t_mix, tv_adj, post_c_mix, range_type = ifelse(lrv < tv, "greater", "less"))
+      pr_t <- posterior_prob(post1 = post_t_mix,
+                             value = tv_adj,
+                             post2 = post_c_mix, range_type = ifelse(lrv < tv, "greater", "less"))
 
       post_prob <- rbind(post_prob, c(pr_m, pr_l, pr_t))
       colnames(post_prob) <- c("pr_m", "pr_l", "pr_t")
@@ -229,8 +236,8 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
 
   if (Lalonde_decision) {
     cat("Start making decisions based on Lalonde framework.\n")
-    post_inference$decision_pr <- with(post_inference, ifelse(pr_t > fsr & (pr_t + pr_l) > 1 - fgr, "go",
-                                                              ifelse(pr_t > fsr  & (pr_t + pr_l) <= 1 - fgr, "consider",
+    post_inference$decision_pr <- with(post_inference, ifelse( (pr_t > fsr) & ((pr_t + pr_l) > 1 - fgr), "go",
+                                                              ifelse( (pr_t > fsr) & ((pr_t + pr_l) <= 1 - fgr), "consider",
                                                                      ifelse(pr_t <= fsr, "no-go", NA))))
 
     post_inference$decision_ci <- if (lrv < tv) {

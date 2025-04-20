@@ -157,7 +157,7 @@ data_gen_binary <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NU
     ncore <- 2
   } else {
     # use all cores in devtools::test()
-    ncore <- detectCores() - 1
+    ncore <- parallel::detectCores() - 1
   }
   cl <- makeCluster(ncore)
   clusterExport(cl, list("n_list", "prob_list", "arm_names", "n_arms"), envir = environment())
@@ -188,3 +188,84 @@ data_gen_binary <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NU
 }
 
 
+#' Generate PTSS data across arms and simulations using transformed Beta
+#'
+#' @param n_arms Number of arms
+#' @param nsim Number of simulations
+#' @param n_list Named list of sample sizes per arm
+#' @param mu_list Named list of means per arm
+#' @param sigma_list Named list of standard deviations per arm
+#' @param arm_names Character vector of arm names
+#'
+#' @return A list with elements `data`, `summary`, and `true_value`
+#'
+data_gen_ptss <- function(n_arms = 2, nsim = 10,
+                          n_list = NULL, mu_list = NULL, sigma_list = NULL,
+                          arm_names = NULL) {
+  a <- -1
+  b <- 1
+
+  # Calculate true values
+  # true_value <- data.frame(arm = arm_names) %>%
+  #   rowwise() %>%
+  #   mutate(true_value = mu_list[arm]) %>%
+  #   pivot_wider(names_from = .data$arm, values_from = .data$true_value, names_glue = "{arm}.true_value")
+
+  true_value <- data.frame(arm = arm_names) %>%
+    rowwise() %>%
+    mutate(true_value = a + (b - a) * ((mu_list[arm] - a) / (b - a))) %>%
+    pivot_wider(names_from = .data$arm, values_from = .data$true_value, names_glue = "{arm}.true_value")
+
+  if (all(c("treatment", "control") %in% arm_names)) {
+    true_value <- true_value %>%
+      mutate(compare_true = treatment.true_value - control.true_value)
+  } else {
+    true_value <- true_value %>% mutate(compare_true = NA)
+  }
+
+  ncore <- max(parallel::detectCores() - 1, 1)
+  cl <- parallel::makeCluster(ncore)
+  parallel::clusterExport(cl, varlist = c("simulate_ptss",
+                                          "n_list", "mu_list", "sigma_list",
+                                          "arm_names", "a", "b"),
+                          envir = environment())
+  parallel::clusterEvalQ(cl, {
+    library(dplyr)
+    library(tidyr)
+    library(tibble)
+    library(data.table)
+  })
+
+  results <- parallel::parLapply(cl, 1:nsim, function(nrep) {
+    data_temp <- data.table::data.table(
+      nsim = rep(nrep, sum(n_list)),
+      id = unlist(lapply(n_list, seq)),
+      arm = factor(unlist(mapply(rep, arm_names, n_list, SIMPLIFY = TRUE, USE.NAMES = FALSE)),
+                   levels = arm_names),
+      ptss = unlist(as.list(mapply(simulate_ptss, n_list, mu_list, sigma_list)))
+    )
+
+    summary_stats <- data_temp %>%
+      group_by(arm) %>%
+      summarise(
+        nsim = unique(nsim),
+        n = n(),
+        mean_ptss = mean(ptss),
+        sd_ptss = sd(ptss),
+        .groups = "drop"
+      )
+
+    list(data = data_temp, summary = summary_stats)
+  })
+
+  parallel::stopCluster(cl)
+
+  data_all <- data.table::rbindlist(lapply(results, "[[", "data"))
+  summary_all <- data.table::rbindlist(lapply(results, "[[", "summary"))
+
+  return(list(
+    data = data_all,
+    summary = summary_all,
+    true_value = true_value
+  ))
+}

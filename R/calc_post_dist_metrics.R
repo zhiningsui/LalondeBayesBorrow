@@ -7,6 +7,7 @@
 #' @param endpoint A string. Specifies the type of endpoint ("g-score" or "OR").
 #' @param true_value A scalar. The true median ratio for the "g-score" endpoint or the true rate difference for the "OR" endpoint.
 #' @param post_est_ci A data frame. Contains posterior inference obtained from `bayesian_lalonde_decision()`, including posterior estimates, standard errors, and 95\% credible intervals for each simulation repetition.
+#' @param remove.na
 #'
 #' @return A data frame containing the evaluation metrics for the posterior distribution, including:
 #'   - `bias_avg`: The average bias of the estimate.
@@ -26,7 +27,7 @@
 #'                          EXP_TRANSFORM = TRUE)
 #'
 #' calc_post_dist_metrics("g-score", true_value = 1.2, post_est_ci = post_inference_result)
-calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci) {
+calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci, remove.na = FALSE) {
   if (endpoint == "g-score") {
 
     delta <- true_value
@@ -52,8 +53,15 @@ calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci) {
     sd_empirical <- stats::sd(log_delta_hat)
 
     # Coverage probability
-    ci <- data.frame(cil = log(post_est_ci$compare_ci_l),
-                     ciu = log(post_est_ci$compare_ci_u))
+    if(remove.na) {
+      ci <- data.frame(cil = log(post_est_ci$compare_ci_l),
+                       ciu = log(post_est_ci$compare_ci_u)) %>%
+        na.omit()
+    }else{
+      ci <- data.frame(cil = log(post_est_ci$compare_ci_l),
+                       ciu = log(post_est_ci$compare_ci_u))
+    }
+
     ci$coverage <- ifelse(ci$cil < log_delta & ci$ciu > log_delta, 1, 0)
     cp <- mean(ci$coverage)
 
@@ -83,8 +91,15 @@ calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci) {
     sd_empirical <- stats::sd(delta_hat)
 
     # Coverage probability
-    ci <- data.frame(cil = post_est_ci$compare_ci_l,
-                     ciu = post_est_ci$compare_ci_u)
+    if(remove.na) {
+      ci <- data.frame(cil = post_est_ci$compare_ci_l,
+                       ciu = post_est_ci$compare_ci_u) %>%
+        na.omit()
+    }else{
+      ci <- data.frame(cil = post_est_ci$compare_ci_l,
+                       ciu = post_est_ci$compare_ci_u)
+    }
+
     ci$coverage <- ifelse(ci$cil < delta & ci$ciu > delta, 1, 0)
     cp <- mean(ci$coverage)
 
@@ -93,6 +108,34 @@ calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci) {
                           sd_avg = sd_avg,
                           sd_empirical = sd_empirical,
                           cp = cp)
+  } else if (endpoint == "PTSS") {
+
+    delta <- true_value
+    delta_hat <- post_est_ci$est_compare
+    bias_avg_mean_diff <- mean(delta_hat - delta)
+
+    sds <- post_est_ci$sd_compare
+    sd_avg <- mean(sds)
+    sd_empirical <- stats::sd(delta_hat)
+
+    if(remove.na) {
+      ci <- data.frame(cil = post_est_ci$compare_ci_l,
+                       ciu = post_est_ci$compare_ci_u) %>% na.omit()
+    } else {
+      ci <- data.frame(cil = post_est_ci$compare_ci_l,
+                       ciu = post_est_ci$compare_ci_u)
+    }
+
+    ci$coverage <- ifelse(ci$cil < delta & ci$ciu > delta, 1, 0)
+    cp <- mean(ci$coverage)
+
+    metrics <- data.frame(
+      delta = delta,
+      bias_avg_mean_diff = bias_avg_mean_diff,
+      sd_avg = sd_avg,
+      sd_empirical = sd_empirical,
+      cp = cp
+    )
   }
 
   return(metrics)

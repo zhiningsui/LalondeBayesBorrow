@@ -38,6 +38,67 @@ freq_binary <- function(data) {
   return(freq = freq)
 }
 
+#' Simulate PTSS values from a transformed Beta distribution
+#'
+#' @param n Integer. Number of observations to simulate.
+#' @param mu Numeric. Target mean PTSS on the [-100, 100] scale.
+#' @param sigma Numeric. Target standard deviation PTSS on the [-100, 100] scale.
+#' @param a Numeric. Lower bound of PTSS scale (default = -100).
+#' @param b Numeric. Upper bound of PTSS scale (default = 100).
+#'
+#' @return A numeric vector of simulated PTSS values.
+#' @export
+#'
+#' @examples
+#' set.seed(123)
+#' simulate_ptss_transformed_beta(n = 100, mu = 20, sigma = 20)
+simulate_ptss <- function(n, mu, sigma, a = -1, b = 1) {
+  mu_star <- (mu - a) / (b - a)
+  sigma_star <- sigma / (b - a)
+
+  # Method-of-moments
+  nu <- (mu_star * (1 - mu_star)) / (sigma_star^2) - 1
+
+  if (nu <= 0 || is.nan(nu)) {
+    warning(sprintf("Invalid combination of mu = %.3f and sigma = %.3f: nu = %.3f is not positive.", mu, sigma, nu))
+    return(rep(NA, n))
+  }
+
+  alpha <- mu_star * nu
+  beta <- (1 - mu_star) * nu
+
+  # Simulate
+  x <- rbeta(n, shape1 = alpha, shape2 = beta)
+  y <- a + (b - a) * x
+  return(y)
+}
+
+#' Validate PTSS parameters for transformed Beta distribution on [-1, 1]
+#'
+#' @param mu A numeric vector of means on [-1, 1]
+#' @param sigma A numeric vector of standard deviations (must be positive)
+#' @param a Lower bound of the interval (default: -1)
+#' @param b Upper bound of the interval (default: 1)
+#'
+#' @return A logical vector indicating whether each (mu, sigma) pair is valid.
+#'         Also throws warnings for invalid cases.
+#'
+#' @export
+validate_ptss_params <- function(mu, sigma, a = -1, b = 1) {
+  if (length(mu) != length(sigma)) stop("mu and sigma must be the same length")
+  mu_star <- (mu - a) / (b - a)
+  sigma_star <- sigma / (b - a)
+
+  sigma_max <- sqrt(mu_star * (1 - mu_star))  # from Beta variance constraint
+  is_valid <- (sigma_star < sigma_max) & (sigma_star > 0) & (mu_star > 0) & (mu_star < 1)
+
+  for (i in which(!is_valid)) {
+    warning(sprintf("Invalid PTSS parameters: mu = %.3f, sigma = %.3f; sigma must be < %.3f",
+                    mu[i], sigma[i], sigma_max[i]))
+  }
+
+  return(is_valid)
+}
 
 #' Retrieve All Functions from an Environment
 #'
@@ -142,6 +203,7 @@ create_data_gen_params <- function(params, endpoint) {
       return(NA)
     }
   }
+
   safe_log <- function(param, param_name) {
     if (!is.null(param)) {
       return(log(param))
@@ -150,36 +212,92 @@ create_data_gen_params <- function(params, endpoint) {
       return(NA)
     }
   }
-  param_list <- list(
-    treatment = list(
-      n = check_param(params$trt_n, "trt_n"),
-      prob = check_param(params$trt_prob, "trt_prob"),
-      mu = safe_log(params$trt_mu, "trt_mu"),
-      sigma = check_param(params$trt_sigma, "trt_sigma"),
-      name = "treatment"
-    ),
-    control = list(
-      n = check_param(params$ctrl_n, "ctrl_n"),
-      prob = check_param(params$ctrl_prob, "ctrl_prob"),
-      mu = safe_log(params$ctrl_mu, "ctrl_mu"),
-      sigma = check_param(params$ctrl_sigma, "ctrl_sigma"),
-      name = "control"
-    ),
-    treatment_h = list(
-      n = check_param(params$trt_h_n, "trt_h_n"),
-      prob = check_param(params$trt_h_prob, "trt_h_prob"),
-      mu = safe_log(params$trt_h_mu, "trt_h_mu"),
-      sigma = check_param(params$trt_h_sigma, "trt_h_sigma"),
-      name = "treatment_h"
-    ),
-    control_h = list(
-      n = check_param(params$ctrl_h_n, "ctrl_h_n"),
-      prob = check_param(params$ctrl_h_prob, "ctrl_h_prob"),
-      mu = safe_log(params$ctrl_h_mu, "ctrl_h_mu"),
-      sigma = check_param(params$ctrl_h_sigma, "ctrl_h_sigma"),
-      name = "control_h"
+
+  beta_moments <- function(mu, sigma, a = -1, b = 1) {
+    mu_star <- (mu - a) / (b - a)
+    sigma_star <- sigma / (b - a)
+    nu <- mu_star * (1 - mu_star) / sigma_star^2 - 1
+    alpha <- mu_star * nu
+    beta <- (1 - mu_star) * nu
+    return(c(alpha = alpha, beta = beta))
+  }
+
+  if (endpoint == "ptss") {
+    a <- -1
+    b <- 1
+
+    get_ptss_entry <- function(mu, sigma, n, name) {
+      ab <- beta_moments(mu, sigma, a, b)
+      list(
+        n = n,
+        mu = mu,
+        sigma = sigma,
+        alpha = unname(ab["alpha"]),
+        beta = unname(ab["beta"]),
+        name = name
+      )
+    }
+
+    param_list <- list(
+      treatment = get_ptss_entry(
+        mu = check_param(params$trt_mu, "trt_mu"),
+        sigma = check_param(params$trt_sigma, "trt_sigma"),
+        n = check_param(params$trt_n, "trt_n"),
+        name = "treatment"
+      ),
+      control = get_ptss_entry(
+        mu = check_param(params$ctrl_mu, "ctrl_mu"),
+        sigma = check_param(params$ctrl_sigma, "ctrl_sigma"),
+        n = check_param(params$ctrl_n, "ctrl_n"),
+        name = "control"
+      ),
+      treatment_h = get_ptss_entry(
+        mu = check_param(params$trt_h_mu, "trt_h_mu"),
+        sigma = check_param(params$trt_h_sigma, "trt_h_sigma"),
+        n = check_param(params$trt_h_n, "trt_h_n"),
+        name = "treatment_h"
+      ),
+      control_h = get_ptss_entry(
+        mu = check_param(params$ctrl_h_mu, "ctrl_h_mu"),
+        sigma = check_param(params$ctrl_h_sigma, "ctrl_h_sigma"),
+        n = check_param(params$ctrl_h_n, "ctrl_h_n"),
+        name = "control_h"
+      )
     )
-  )
+
+  } else if (endpoint == "g-score" || endpoint == "OR") {
+    get_entry <- function(prefix, name) {
+      list(
+        n = check_param(params[[paste0(prefix, "_n")]], paste0(prefix, "_n")),
+        prob = check_param(params[[paste0(prefix, "_prob")]], paste0(prefix, "_prob")),
+        mu = safe_log(params[[paste0(prefix, "_mu")]], paste0(prefix, "_mu")),
+        sigma = check_param(params[[paste0(prefix, "_sigma")]], paste0(prefix, "_sigma")),
+        name = name
+      )
+    }
+
+    param_list <- list(
+      treatment = get_entry("trt", "treatment"),
+      control = get_entry("ctrl", "control"),
+      treatment_h = get_entry("trt_h", "treatment_h"),
+      control_h = get_entry("ctrl_h", "control_h")
+    )
+  }
+
+  # Filter out arms with missing required values
+  if (endpoint == "g-score") {
+    required_keys <- c("n", "prob", "mu", "sigma")
+  } else if (endpoint == "OR") {
+    required_keys <- c("n", "prob")
+  } else if (endpoint == "ptss") {
+    required_keys <- c("n", "mu", "sigma", "alpha", "beta")
+  } else {
+    stop("Unsupported endpoint type.")
+  }
+
+  param_list_filtered <- Filter(function(x) !any(sapply(x[required_keys], is.na)), param_list)
+
+
   # Filter out entries with missing n or prob parameters
   if(endpoint == "g-score"){
     param_list_filtered <- Filter(function(x) !any(sapply(x, is.na)), param_list)
@@ -187,8 +305,9 @@ create_data_gen_params <- function(params, endpoint) {
     param_list_filtered <- Filter(function(x) !any(sapply(x[c("n", "prob")], is.na)), param_list)
   }
 
+  param_list_filtered <- Filter(function(x) !any(sapply(x[required_keys], is.na)), param_list)
+
   return(param_list_filtered)
 }
-
 
 
