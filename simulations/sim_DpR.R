@@ -240,8 +240,8 @@ metrics_post_dist_all <- metrics_post_dist_all[, c("i", "true_value.compare_true
 metrics_post_dist_all$control.mean.diff <- metrics_post_dist_all$control.mu - metrics_post_dist_all$control_h.mu
 
 metrics_post_dist_all$true_value.compare_true <- round(metrics_post_dist_all$true_value.compare_true,2)
-metrics_post_dist_all$true_value.compare_true = ifelse(metrics_post_dist_all$true_value.compare_true == -0.20, "-0.20 (TV)",
-                                        ifelse(metrics_post_dist_all$true_value.compare_true == -0.10, "-0.10 (LRV)",
+metrics_post_dist_all$true_value.compare_true = ifelse(metrics_post_dist_all$true_value.compare_true == -0.20, "-0.2 (TV)",
+                                        ifelse(metrics_post_dist_all$true_value.compare_true == -0.10, "-0.1 (LRV)",
                                                "-0.15"))
 
 metrics_post_dist_all$borrowing <- factor(metrics_post_dist_all$borrowing,
@@ -265,10 +265,10 @@ metrics_df$control.mean.diff <- factor(metrics_df$control.mean.diff,
                                                 expression(paste(theta[c], " - ", theta[ch], " = 0.2"))))
 
 metrics_df$true_value.compare_true <- factor(metrics_df$true_value.compare_true,
-                                             levels = c("-0.10 (LRV)", "-0.15", "-0.20 (TV)"),
-                                                        labels=c(expression(paste(Delta, " = -0.10")),
+                                             levels = c("-0.1 (LRV)", "-0.15", "-0.2 (TV)"),
+                                                        labels=c(expression(paste(Delta, " = -0.1")),
                                                                  expression(paste(Delta, " = -0.15")),
-                                                                 expression(paste(Delta, " = -0.20"))))
+                                                                 expression(paste(Delta, " = -0.2"))))
 
 metrics_df$control.n <- factor(metrics_df$control.n)
 
@@ -352,7 +352,7 @@ p <- p1 / p3 +
         # legend.box.margin=margin(-5,-5,-5,0),
         plot.tag = element_text(size = 17)
   )
-ggsave(filename = "sim_DpR_dist_check_metrics_2.jpg", p, width = 8.5, height = 8.5)
+ggsave(filename = "sim_DpR_dist_check_metrics_2.jpg", p, width = 9, height = 9)
 
 
 metrics_df <- metrics_post_dist_all %>%
@@ -401,11 +401,11 @@ oc_all <- oc_all[, c("i", "true_value.compare_true",
 
 oc_all$decision_pr <- factor(oc_all$decision_pr, levels = c("no-go", "consider", "go"))
 
-oc_all$true_value.compare_true = ifelse(oc_all$true_value.compare_true == -0.20, "-0.20 (TV)",
-                                        ifelse(oc_all$true_value.compare_true == -0.10, "-0.10 (LRV)",
+oc_all$true_value.compare_true = ifelse(oc_all$true_value.compare_true == -0.2, "-0.2 (TV)",
+                                        ifelse(oc_all$true_value.compare_true == -0.1, "-0.1 (LRV)",
                                                "-0.15"))
 oc_all$true_value.compare_true <- factor(oc_all$true_value.compare_true,
-                                         levels = c("-0.10 (LRV)", "-0.15", "-0.20 (TV)"))
+                                         levels = c("-0.1 (LRV)", "-0.15", "-0.2 (TV)"))
 
 
 oc_all$control.mean.diff <- oc_all$control.mu - oc_all$control_h.mu
@@ -414,11 +414,11 @@ oc_all$borrowing <- factor(oc_all$borrowing,
                            labels=c("Borrowing: No", "Borrowing: Yes"))
 
 
-metrics <- oc_all[oc_all$true_value.compare_true %in% c("-0.20 (TV)", "-0.10 (LRV)"), ]
-metrics <- oc_all[(oc_all$true_value.compare_true == "-0.10 (LRV)" & oc_all$decision_pr == "go") | (oc_all$true_value.compare_true == "-0.20 (TV)" & oc_all$decision_pr == "no-go"),]
-false_go_risk <- metrics[metrics$true_value.compare_true == "-0.10 (LRV)", c("control.n", "borrowing", "proportion_pr", "control.mean.diff")]
+metrics <- oc_all[oc_all$true_value.compare_true %in% c("-0.2 (TV)", "-0.1 (LRV)"), ]
+metrics <- oc_all[(oc_all$true_value.compare_true == "-0.1 (LRV)" & oc_all$decision_pr == "go") | (oc_all$true_value.compare_true == "-0.2 (TV)" & oc_all$decision_pr == "no-go"),]
+false_go_risk <- metrics[metrics$true_value.compare_true == "-0.1 (LRV)", c("control.n", "borrowing", "proportion_pr", "control.mean.diff")]
 colnames(false_go_risk)[3] <- "Type I Error (FGR)"
-false_stop_risk <- metrics[metrics$true_value.compare_true == "-0.20 (TV)", c("control.n", "borrowing", "proportion_pr", "control.mean.diff")]
+false_stop_risk <- metrics[metrics$true_value.compare_true == "-0.2 (TV)", c("control.n", "borrowing", "proportion_pr", "control.mean.diff")]
 colnames(false_stop_risk)[3] <- "Type II Error (FSR)"
 metrics_df <- merge(false_go_risk, false_stop_risk, by = c("control.n", "borrowing", "control.mean.diff"))
 
@@ -448,7 +448,7 @@ p_risk <- ggplot(metrics_long,
         axis.text = element_text(size = 12),
         strip.text = element_text(size = 13)
   )
-ggsave("sim_DpR_conflict_vs_risk.jpg", p_risk, width = 7, height = 4)
+ggsave("sim_DpR_conflict_vs_risk.jpg", p_risk, width = 7.5, height = 4)
 
 
 oc_new <- data.frame()
@@ -468,7 +468,7 @@ oc_new$control.mean.diff <- factor(oc_new$control.mean.diff)
 myColors <- c("red","#F0E442","#009E73")
 names(myColors) <- levels(oc_new$decision_pr)
 oc_new$true_value.compare_true <- factor(oc_new$true_value.compare_true,
-                                         levels = c("-0.10 (LRV)", "-0.15", "-0.20 (TV)"))
+                                         levels = c("-0.1 (LRV)", "-0.15", "-0.2 (TV)"))
 
 
 p_list <- list()
@@ -525,19 +525,19 @@ oc2 <- oc_new %>%
   arrange(control.mean.diff)
 
 # oc2$`no-go_Borrowing: No` = cell_spec(oc2$`no-go_Borrowing: No`,
-#                                       background = ifelse(oc2$true_value.compare_true == "-0.20 (TV)", "steelblue2", "white"))
+#                                       background = ifelse(oc2$true_value.compare_true == "-0.2 (TV)", "steelblue2", "white"))
 #
 # oc2$`no-go_Borrowing: Yes` = cell_spec(oc2$`no-go_Borrowing: Yes`,
-#                                        background = ifelse(oc2$true_value.compare_true == "-0.20 (TV)", "steelblue2", "white"))
+#                                        background = ifelse(oc2$true_value.compare_true == "-0.2 (TV)", "steelblue2", "white"))
 #
 # oc2$`go_Borrowing: No` = cell_spec(oc2$`go_Borrowing: No`,
-#                                    background = ifelse(oc2$true_value.compare_true == "-0.10 (LRV)", "pink", "white"))
+#                                    background = ifelse(oc2$true_value.compare_true == "-0.1 (LRV)", "pink", "white"))
 #
 # oc2$`go_Borrowing: Yes` = cell_spec(oc2$`go_Borrowing: Yes`,
-#                                     background = ifelse(oc2$true_value.compare_true == "-0.10 (LRV)", "pink", "white"))
+#                                     background = ifelse(oc2$true_value.compare_true == "-0.1 (LRV)", "pink", "white"))
 
 kbl(oc2[,-1], escape = T, row.names = F, digits = 3,
-    # format    = "latex",
+    format    = "latex",
     booktabs  = T,
     col.names = c("n", "Delta", rep(c("Pr(No-Go)", "Pr(Consider)","Pr(Go)"), 2))) %>%
   kable_styling(bootstrap_options = c("condensed")) %>%
@@ -548,6 +548,8 @@ kbl(oc2[,-1], escape = T, row.names = F, digits = 3,
                       "Case 3:" = 9,
                       "Case 4:" = 9,
                       "Case 5:" = 9))
+
+
 
 
 
