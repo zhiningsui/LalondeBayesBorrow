@@ -222,7 +222,23 @@ create_data_gen_params <- function(params, endpoint) {
     return(c(alpha = alpha, beta = beta))
   }
 
-  if (endpoint == "ptss") {
+  if (endpoint == "continuous") {
+    get_entry <- function(prefix, name) {
+      list(
+        n = check_param(params[[paste0(prefix, "_n")]], paste0(prefix, "_n")),
+        mu = check_param(params[[paste0(prefix, "_mu")]], paste0(prefix, "_mu")),
+        sigma = check_param(params[[paste0(prefix, "_sigma")]], paste0(prefix, "_sigma")),
+        name = name
+      )
+    }
+
+    param_list <- list(
+      treatment = get_entry("trt", "treatment"),
+      control = get_entry("ctrl", "control"),
+      treatment_h = get_entry("trt_h", "treatment_h"),
+      control_h = get_entry("ctrl_h", "control_h")
+    )
+  } else if (endpoint == "ptss") {
     a <- -1
     b <- 1
 
@@ -291,6 +307,8 @@ create_data_gen_params <- function(params, endpoint) {
     required_keys <- c("n", "prob")
   } else if (endpoint == "ptss") {
     required_keys <- c("n", "mu", "sigma", "alpha", "beta")
+  } else if (endpoint == "continuous") {
+    required_keys <- c("n", "mu", "sigma")
   } else {
     stop("Unsupported endpoint type.")
   }

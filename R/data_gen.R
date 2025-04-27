@@ -187,6 +187,74 @@ data_gen_binary <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NU
 
 }
 
+data_gen_continuous <- function(n_arms = 2, nsim = 10, n_list = NULL, mu_list = NULL, sigma_list = NULL,arm_names = NULL) {
+  mean_true <- data.frame(arm = arm_names,
+                          mean_true = unlist(mu_list)) %>%
+    pivot_wider(names_from = .data$arm, values_from = .data$mean_true,
+                names_glue = "{arm}.mean_true")
+
+  if (sum(arm_names %in% c("treatment", "control")) >= 2) {
+    mean_true <- mean_true %>%
+      mutate(compare_true = !!sym(paste0(arm_names[arm_names == "treatment"], ".mean_true")) - !!sym(paste0(arm_names[arm_names == "control"], ".mean_true")))
+  } else {
+    mean_true <- mean_true %>%
+      mutate(compare_true = NA)
+  }
+
+  chk <- Sys.getenv("_R_CHECK_LIMIT_CORES_", "")
+  if (nzchar(chk) && chk == "TRUE") {
+    # use 2 cores in CRAN/Travis/AppVeyor
+    ncore <- 2
+  } else {
+    # use all cores in devtools::test()
+    ncore <- parallel::detectCores() - 1
+  }
+  cl <- makeCluster(ncore)
+  clusterExport(cl, list("n_list", "mu_list", "sigma_list", "arm_names", "n_arms"),
+                envir = environment())
+  clusterEvalQ(cl, {
+    library(dplyr)
+    library(tidyr)
+    library(data.table)
+  })
+
+  results <- parLapply(cl, 1:nsim, function(nrep) {
+
+    data_temp <- data.table(
+      nsim = rep(nrep, each = sum(n_list)),
+      id = unlist(lapply(n_list, seq)),
+      arm = unlist(as.list(mapply(rep, arm_names, n_list))),
+      value = unlist(mapply(rnorm, n = n_list, mean = mu_list, sd = sigma_list, SIMPLIFY = FALSE))
+    )
+
+    summary_stats <- data_temp %>%
+      group_by(arm) %>%
+      summarise(
+        nsim = unique(nsim),
+        n = n(),
+        mu_hat = mean(value),
+        sd = sd(value),
+        .groups = "drop"
+      ) %>%
+      mutate(s = sd / sqrt(n))
+
+    list(data = data_temp, summary = summary_stats)
+  })
+
+  stopCluster(cl)
+
+  data_all <- data.table::rbindlist(lapply(results, "[[", "data"))
+  summary_all <- data.table::rbindlist(lapply(results, "[[", "summary")) %>%
+    pivot_wider(names_from = arm, values_from = c(n, mu_hat, sd, s),
+                names_glue = "{arm}.{.value}")
+
+  return(list(
+    data = data_all,
+    summary = summary_all,
+    true_value = mean_true
+  ))
+}
+
 
 #' Generate PTSS data across arms and simulations using transformed Beta
 #'

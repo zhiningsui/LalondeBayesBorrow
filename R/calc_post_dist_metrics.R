@@ -108,7 +108,7 @@ calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci, remove.na 
                           sd_avg = sd_avg,
                           sd_empirical = sd_empirical,
                           cp = cp)
-  } else if (endpoint == "PTSS") {
+  } else if (endpoint == "continuous") {
 
     delta <- true_value
     delta_hat <- post_est_ci$est_compare

@@ -77,8 +77,7 @@ posterior_inference <- function(post1, post2 = NULL, quantiles, EXP_TRANSFORM = 
       NA
     })
 
-    sd_compare <- sqrt((result1$sd)^2 +(result2$sd)^2)
-
+    sd_compare <- sqrt((result1$sd)^2 + (result2$sd)^2)
   }
 
   rslt <- data.frame(

@@ -65,12 +65,6 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
                                       EXP_TRANSFORM = FALSE) {
   nsims = unique(data_summary$nsim)
 
-  # Setting up the parallel computing backend
-  # if(is.null(ncore)){
-  #   ncore = detectCores()-1
-  # }
-  # cl <- makeCluster(ncore)
-  chk <- Sys.getenv("_R_CHECK_LIMIT_CORES_", "")
   if (nzchar(chk) && chk == "TRUE") {
     # use 2 cores in CRAN/Travis/AppVeyor
     ncore <- 2
@@ -79,58 +73,6 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
     ncore <- detectCores() - 1
   }
   cl <- makeCluster(ncore)
-
-  # required_vars <- c("endpoint", "data_summary", "lrv", "tv", "fgr", "fsr", "arm_names",
-  #                    "prior_params")
-  # required_funcs <- c(get_all_functions(environment()), get_all_functions(globalenv()))
-  # clusterExport(cl, c(required_vars, required_funcs), envir = environment())
-  # clusterEvalQ(cl, {
-  #   library(dplyr)
-  #   library(tidyr)
-  #   library(RBesT)
-  #   library(parallel)
-  #   library(data.table)
-  # })
-  # # Loop over all repetitions with parallel computing
-  # post_params <- parLapply(cl, nsims, function(nrep) {
-  #   historical_ctrl <- if (any(names(arm_names) == "control_h")) data_summary[data_summary$nsim==nrep, startsWith(names(data_summary), "control_h.")] else NULL
-  #   historical_trt <- if (any(names(arm_names) == "treatment_h")) data_summary[data_summary$nsim==nrep, startsWith(names(data_summary), "treatment_h.")]  else NULL
-  #   current_ctrl <- data_summary[data_summary$nsim==nrep, startsWith(names(data_summary), "control.")]
-  #   current_trt <- data_summary[data_summary$nsim==nrep, startsWith(names(data_summary), "treatment.")]
-  #
-  #   if (!is.null(current_ctrl)) names(current_ctrl) <- sapply(strsplit(names(current_ctrl), "\\."), "[[", 2)
-  #   if (!is.null(historical_ctrl)) names(historical_ctrl) <- sapply(strsplit(names(historical_ctrl), "\\."), "[[", 2)
-  #   if (!is.null(current_trt)) names(current_trt) <- sapply(strsplit(names(current_trt), "\\."), "[[", 2)
-  #   if (!is.null(historical_trt)) names(historical_trt) <- sapply(strsplit(names(historical_trt), "\\."), "[[", 2)
-  #
-  #   # post_c <- get_posterior_params(current = current_ctrl, historical = historical_ctrl, endpoint, prior_params, arm = "control")
-  #   # post_t <- get_posterior_params(current = current_trt, historical = historical_trt, endpoint, prior_params, arm = "treatment")
-  #
-  #   post_c <-  posterior_distribution(endpoint,
-  #                                     current = current_ctrl,
-  #                                     historical = historical_ctrl,
-  #                                     delta = prior_params[["control.delta"]],
-  #                                     w = prior_params[["control.w"]],
-  #                                     a = prior_params[["control.a"]],
-  #                                     b = prior_params[["control.b"]])
-  #   post_t <-  posterior_distribution(endpoint,
-  #                                     current = current_trt,
-  #                                     historical = historical_trt,
-  #                                     delta = prior_params[["treatment.delta"]],
-  #                                     w = prior_params[["treatment.w"]],
-  #                                     a = prior_params[["treatment.a"]],
-  #                                     b = prior_params[["treatment.b"]])
-  #
-  #   post_params_i <- c(unlist(post_t$post), unlist(post_c$post))
-  #   names(post_params_i) <- c(paste0("treatment.", names(post_t$post), "_post"), paste0("control.", names(post_c$post), "_post"))
-  #
-  #   prior_ws <- c(post_t$w_prior, post_c$w_prior)
-  #   names(prior_ws) <- c("treatment.w_prior", "control.w_prior")
-  #   c(prior_ws, post_params_i)
-  # })
-  # stopCluster(cl)
-  # post_params <- bind_rows(post_params)
-
   required_vars <- c("endpoint", "data_summary", "lrv", "tv", "fgr", "fsr", "arm_names",
                      "prior_params")
   required_funcs <- c(get_all_functions(environment()), get_all_functions(globalenv()))
@@ -142,7 +84,7 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
     library(data.table)
   })
   registerDoParallel(cl)
-  # Loop over all repetitions with parallel computing
+
   post_params <- foreach(nrep = nsims, .combine=bind_rows) %dopar%{
     historical_ctrl <- if (any(names(arm_names) == "control_h")) data_summary[data_summary$nsim==nrep, startsWith(names(data_summary), "control_h.")] else NULL
     historical_trt <- if (any(names(arm_names) == "treatment_h")) data_summary[data_summary$nsim==nrep, startsWith(names(data_summary), "treatment_h.")]  else NULL
@@ -154,9 +96,6 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
     if (!is.null(current_trt)) names(current_trt) <- sapply(strsplit(names(current_trt), "\\."), "[[", 2)
     if (!is.null(historical_trt)) names(historical_trt) <- sapply(strsplit(names(historical_trt), "\\."), "[[", 2)
 
-    # post_c <- get_posterior_params(current = current_ctrl, historical = historical_ctrl, endpoint, prior_params, arm = "control")
-    # post_t <- get_posterior_params(current = current_trt, historical = historical_trt, endpoint, prior_params, arm = "treatment")
-
     post_c <-  posterior_distribution(endpoint,
                                       current = current_ctrl,
                                       historical = historical_ctrl,
@@ -164,7 +103,12 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
                                       w = prior_params[["control.w"]],
                                       a = prior_params[["control.a"]],
                                       b = prior_params[["control.b"]],
-                                      gate = prior_params[["control.gate"]])
+                                      a0 = prior_params[["control.a0"]],
+                                      b0 = prior_params[["control.b0"]],
+                                      theta0 = prior_params[["control.theta0"]],
+                                      s0 = prior_params[["control.s0"]],
+                                      ess_h = prior_params[["control.ess_h"]])
+
     post_t <-  posterior_distribution(endpoint,
                                       current = current_trt,
                                       historical = historical_trt,
@@ -172,7 +116,11 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
                                       w = prior_params[["treatment.w"]],
                                       a = prior_params[["treatment.a"]],
                                       b = prior_params[["treatment.b"]],
-                                      gate = prior_params[["treatment.gate"]])
+                                      a0 = prior_params[["treatment.a0"]],
+                                      b0 = prior_params[["treatment.b0"]],
+                                      theta0 = prior_params[["treatment.theta0"]],
+                                      s0 = prior_params[["treatment.s0"]],
+                                      ess_h = prior_params[["treatment.ess_h"]])
 
     post_params_i <- c(unlist(post_t$post), unlist(post_c$post))
     names(post_params_i) <- c(paste0("treatment.", names(post_t$post), "_post"), paste0("control.", names(post_c$post), "_post"))
@@ -181,7 +129,7 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
     names(prior_ws) <- c("treatment.w_prior", "control.w_prior")
     c(prior_ws, post_params_i)
   }
-  # Clean up the parallel computing environment
+
   stopCluster(cl)
 
   post_inference <- NULL

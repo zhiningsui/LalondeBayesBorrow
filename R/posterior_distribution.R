@@ -24,8 +24,8 @@
 #'     - `w_prior`: Weight of the prior after conflict detection (or user-defined weight).
 #'     - `post`: A list with:
 #'       - `w`: Posterior weight of the informative component.
-#'       - `mu1`, `sigma1`: Posterior mean and standard deviation from informative prior.
-#'       - `mu2`, `sigma2`: Posterior mean and standard deviation from non-informative prior.
+#'       - `theta1`, `sigma1`: Posterior mean and standard deviation from informative prior.
+#'       - `theta2`, `sigma2`: Posterior mean and standard deviation from non-informative prior.
 #'   - For binary endpoints:
 #'     - `w_prior`: Weight of the prior after conflict detection (or user-defined weight).
 #'     - `post`: A list with:
@@ -47,78 +47,76 @@
 #' historical_data <- c(n = 90, count = 40)
 #' posterior_distribution(endpoint = "binary", current = current_data,
 #'                        historical = historical_data, a = 1, b = 1, w = NULL)
-posterior_distribution <- function(endpoint, current, historical = NULL, delta = log(0.85), w = NULL, a = NULL, b = NULL, gate = NULL) {
+posterior_distribution <- function(endpoint, current, historical = NULL, delta = log(0.85),
+                                   w = NULL, a = 0.01, b = 0.01, a0 = 0.01, b0 = 0.01,
+                                   theta0 = 0, s0 = 100, ess_h = NULL) {
   # w.input record the initial weight; NULL = SAM prior, 0 = No borrowing
   w.input <- w
 
   # if no historical data is provided, automatically set w.input to 0 to indicate no borrowing.
-  if (is.null(historical)){
+  if (is.null(historical)) {
     if (is.null(w.input) | w.input != 0 ) stop("posterior_distribution(): No historical data provided. Cannot do borrowing with w not equal to zero.")
     w.input <- 0
     historical <- current
   }
 
   if (endpoint == "continuous") {
-
     if(!("n" %in% names(historical) & "mu_hat" %in% names(historical) & "s" %in% names(historical) &
          "n" %in% names(current) & "mu_hat" %in% names(current) & "s" %in% names(current))) {
       stop("posterior_distribution(): Current data and/or historical data do not have n, mu_hat, or s column.")
-    }
-
-    # if no borrowing, assign historical to NULL, i.e., no historical data
-    if(!is.null(w.input)){
-      if(w.input == 0) {
-        historical = NULL
-      }
     }
 
     nh <- historical["n"]
     yh <- historical["mu_hat"]
     sh <- historical["s"]
 
+    n <- current["n"]
     y <- current["mu_hat"]
     s <- current["s"]
 
-    # if gate is given, consider gate value before any borrowing
-    if (!is.null(gate)) {
-      if (is.null(historical)) {stop("posterior_distribution(): No historical data provided. Cannot compare prior-data conflict with the gate.")}
-      if (y-yh > gate | yh-y > gate){
-        w.input = 0
-        w = 0
-      }
+    # Obtain discounting parameter for the power prior
+    if (!is.null(ess_h)) {
+      power_alpha <- ess_h/nh
+    } else {
+      power_alpha <- 1
     }
 
     if (!is.null(w.input) && w.input == 0) { # if no borrowing (either because of no historical data, or because of large conflict)
-      if (is.null(historical)){ # if no historical data is provided, using N(0,100^2)
-        mu2 <- (100^2 * y) / (s^2 + 100^2)
-        sig2 <- sqrt((100^2 * s^2) / (100^2 + s^2))
-      } else { # if historical data is provided
-        mu2 <- (s^2 * yh + sh^2 * y * nh) / (s^2 + sh^2 * nh)
-        sig2 <- sqrt(s^2 * sh^2 * nh / (s^2 + sh^2 * nh))
-      }
+      theta2 <- (s^2 * theta0 + s0^2 * y) / (s^2 + s0^2)
+      sig2 <- sqrt((s0^2 * s^2) / (s0^2 + s^2))
+
       post = list(
         w = 0,
         mu1 = NA, sigma1 = NA,
-        mu2 = unname(mu2), sigma2 = unname(sig2)
+        mu2 = unname(theta2), sigma2 = unname(sig2)
       )
     } else {
       if (is.null(w.input)) {
-        R <- exp(-((y - yh) / s)^2 / 2 - max(-((y - yh - delta) / s)^2 / 2, -((y - yh + delta) / s)^2 / 2))
+        s_pooled <- sqrt( ( (nh-1)*sh^2 + (n-1)*s^2 ) / (nh+n-2) )
+        R <- exp(-((y - yh) / s_pooled)^2 / 2 - max(-((y - yh - delta) / s_pooled)^2 / 2, -((y - yh + delta) / s_pooled)^2 / 2))
         w <- R / (1 + R)
       }
-      mu1 <- (s^2 * yh + sh^2 * y) / (s^2 + sh^2)
-      sig1 <- sqrt(s^2 * sh^2 / (s^2 + sh^2))
-      mu2 <- (s^2 * yh + sh^2 * y * nh) / (s^2 + sh^2 * nh)
-      sig2 <- sqrt(s^2 * sh^2 * nh / (s^2 + sh^2 * nh))
-      part1 <- 1 / sqrt(s^2 + sh^2) * exp(-0.5 * (y - yh)^2 / (s^2 + sh^2) )
-      part2 <- 1 / sqrt(s^2 + nh * sh^2) * exp(-0.5 * (y - yh)^2 / (s^2 + nh * sh^2) )
-      # part1 <- sig1 / (s * sh) * exp(0.5 * (mu1^2 / sig1^2 - y^2 / s^2 - yh^2 / sh^2))
-      # part2 <- sig2 / (s * sh / sqrt(1 / nh)) * exp(0.5 * (mu2^2 / sig2^2 - y^2 / s^2 - yh^2 / (sh^2 * nh)))
+
+      sh_discount <- sqrt( sh^2 / power_alpha )
+
+      theta1 <- (s^2 * yh + sh_discount^2 * y ) / (s^2 + sh_discount^2 )
+      sig1 <- sqrt( (s^2 * sh_discount^2) / (s^2 + sh_discount^2) )
+
+      theta2 <- (s^2 * theta0 + s0^2 * y) / (s^2 + s0^2)
+      sig2 <- sqrt(s^2 * s0^2 / (s^2 + s0^2))
+
+      # theta2 <- (s^2 * yh + sh^2 * y * nh) / (s^2 + sh^2 * nh)
+      # sig2 <- sqrt(s^2 * sh^2 * nh / (s^2 + sh^2 * nh))
+
+      part1 <- 1 / sqrt(s^2 + sh_discount^2) * exp(-0.5 * (y - yh)^2 / (s^2 + sh_discount^2) )
+      part2 <- 1 / sqrt(s^2 + s0^2) * exp(-0.5 * (y - theta0)^2 / (s^2 + s0^2) )
+
       ws <- w * part1 / (w * part1 + (1 - w) * part2)
+
       post = list(
         w = unname(ws),
-        mu1 = unname(mu1), sigma1 = unname(sig1),
-        mu2 = unname(mu2), sigma2 = unname(sig2)
+        mu1 = unname(theta1), sigma1 = unname(sig1),
+        mu2 = unname(theta2), sigma2 = unname(sig2)
       )
     }
 
@@ -142,12 +140,11 @@ posterior_distribution <- function(endpoint, current, historical = NULL, delta =
     xh <- as.numeric(historical["count"])
     nh <- as.numeric(historical["n"])
 
-    if (!is.null(gate)) {
-      if (is.null(historical)) {stop("posterior_distribution(): No historical data provided. Cannot compare prior-data conflict with the gate.")}
-      if (x/n-xh/nh > gate | xh/nh-x/n > gate){
-        w.input = 0
-        w = 0
-      }
+    # Obtain discounting parameter for the power prior
+    if (!is.null(ess_h)) {
+      power_alpha <- ess_h/nh
+    } else {
+      power_alpha <- 1
     }
 
     a2 <- a + x
@@ -165,10 +162,10 @@ posterior_distribution <- function(endpoint, current, historical = NULL, delta =
         R <- thetah^x * (1 - thetah)^(n - x) / max((thetah + delta)^x * (1 - thetah - delta)^(n - x), (thetah - delta)^x * (1 - thetah + delta)^(n - x))
         w <- R / (1 + R)
       }
-      a1 <- a + xh + x
-      b1 <- b + nh + n - xh - x
+      a1 <- a0 + power_alpha * xh + x
+      b1 <- b0 + power_alpha * (nh - xh) + n - x
       z0 <- beta(a2, b2) / beta(a, b)
-      z1 <- beta(a1, b1) / beta(a + xh, b + nh - xh)
+      z1 <- beta(a1, b1) / beta(a0 + power_alpha * xh, b0 + power_alpha * (nh - xh))
       ws <- w * z1 / (w * z1 + (1 - w) * z0)
 
       post = list(
