@@ -16,17 +16,6 @@
 #'   - `cp`: The nominal coverage probability (95\%).
 #'   - Additional metrics specific to the "g-score" endpoint. More details can be found in `eval_gscore_approx_dist()`.
 #' @export
-#'
-#' @examples
-#' # Example with a continuous endpoint:
-#' post1 <- convert_RBesT_mix(post = data.frame(w = 0.5, mu1 = 0, sigma1 = 1, mu2 = 0.5, sigma2 = 1),
-#'                            endpoint = "continuous")
-#' post2 <- convert_RBesT_mix(post = data.frame(w = 0.9, mu1 = 0, sigma1 = 1, mu2 = 0.5, sigma2 = 1),
-#'                            endpoint = "continuous")
-#' post_inference_result <- posterior_inference(post1, post2, quantiles = c(0.025, 0.975),
-#'                          EXP_TRANSFORM = TRUE)
-#'
-#' calc_post_dist_metrics("g-score", true_value = 1.2, post_est_ci = post_inference_result)
 calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci, remove.na = FALSE) {
   if (endpoint == "g-score") {
 

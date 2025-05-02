@@ -10,9 +10,13 @@ posterior_distribution(
   historical = NULL,
   delta = log(0.85),
   w = NULL,
-  a = NULL,
-  b = NULL,
-  gate = NULL
+  a = 0.01,
+  b = 0.01,
+  a0 = 0.01,
+  b0 = 0.01,
+  theta0 = 0,
+  s0 = 100,
+  ess_h = NULL
 )
 }
 \arguments{
@@ -45,8 +49,8 @@ A list containing the posterior distribution parameters:
     - `w_prior`: Weight of the prior after conflict detection (or user-defined weight).
     - `post`: A list with:
       - `w`: Posterior weight of the informative component.
-      - `mu1`, `sigma1`: Posterior mean and standard deviation from informative prior.
-      - `mu2`, `sigma2`: Posterior mean and standard deviation from non-informative prior.
+      - `theta1`, `sigma1`: Posterior mean and standard deviation from informative prior.
+      - `theta2`, `sigma2`: Posterior mean and standard deviation from non-informative prior.
   - For binary endpoints:
     - `w_prior`: Weight of the prior after conflict detection (or user-defined weight).
     - `post`: A list with:
@@ -57,18 +61,4 @@ A list containing the posterior distribution parameters:
 \description{
 This function calculates the posterior distribution for one-arm trial data with either continuous or binary endpoints, using current and optionally historical data.
 It supports the SAM prior and allows for optional borrowing from historical data.
-}
-\examples{
-# Example with a continuous endpoint:
-current_data <- c(n = 100, mu_hat = 2.5, s = 0.5)
-historical_data <- c(n = 80, mu_hat = 2.0, s = 0.6)
-posterior_distribution(endpoint = "continuous", current = current_data,
-                       historical = historical_data, delta = log(0.85),
-                       w = NULL)
-
-# Example with a binary endpoint:
-current_data <- c(n = 100, count = 45)
-historical_data <- c(n = 90, count = 40)
-posterior_distribution(endpoint = "binary", current = current_data,
-                       historical = historical_data, a = 1, b = 1, w = NULL)
 }

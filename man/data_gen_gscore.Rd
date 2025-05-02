@@ -41,16 +41,3 @@ It simulates individual-level g-scores for each arm based on specified probabili
 and standard deviations for the g-score distributions. The function outputs true median values
 and adjusted median estimates along with their variance.
 }
-\examples{
-# Example of generating g-scores for a study with 2 arms, 100 patients in each arm,
-# and 10 simulation repetitions:
-n_list <- c(treatment = 100, control = 100)
-prob_list <- c(treatment = 0.2, control = 0.3)
-mu_list <- c(treatment = 0.5, control = 0.6)
-sigma_list <- c(treatment = 0.1, control = 0.2)
-arm_names <- c(treatment = "treatment", control = "control")
-sim_data_gscore <- data_gen_gscore(n_arms = 2, nsim = 10, n_list = n_list,
-                                   prob_list = prob_list, mu_list = mu_list,
-                                   sigma_list = sigma_list, arm_names = arm_names)
-
-}

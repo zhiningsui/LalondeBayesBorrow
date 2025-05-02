@@ -51,35 +51,3 @@ A list. The output includes:
 This function implements a Bayesian decision-making framework based on the Lalonde criteria.
 It calculates posterior distributions for each arm and evaluates posterior inference and decision criteria based on the given endpoint type (continuous or binary).
 }
-\examples{
-# Example with a continuous endpoint:
-data_summary <- data.frame(nsim = 1:10,
-                           treatment.n = 50, control.n = 50, control_h.n = 200,
-                           treatment.mu_hat = runif(n = 10, 0.3, 0.5),
-                           control.mu_hat = runif(n = 10, 0.1, 0.5),
-                           control_h.mu_hat = -1, treatment.s = 1,
-                           control.s = 1, control_h.s = 1)
-prior_params <- list(treatment.delta = log(0.85), control.delta = log(0.85),
-                     treatment.w = 0, control.w = NULL)
-arm_names = list(treatment = "treatment", control = "control", control_h = "control_h")
-bayesian_lalonde_decision(endpoint = "continuous", data_summary = data_summary,
-                          prior_params = prior_params, arm_names = arm_names,
-                          posterior_infer = FALSE, Lalonde_decision = FALSE,
-                          EXP_TRANSFORM = TRUE, lrv = 0.8, tv= 0.5, fgr = 0.2, fsr = 0.1)
-
-# Example with a binary endpoint:
-data_summary <- data.frame(nsim = 1:10,
-                           treatment.n = 50, control.n = 50, control_h.n = 200,
-                           treatment.count = rbinom(10, 50, 0.5),
-                           control.count = rbinom(10, 50, 0.2),
-                           control_h.count = rbinom(10, 200, 0.3))
-prior_params <- list(treatment.delta = 0.1, control.delta = 0.1,
-                     treatment.a = 1, treatment.b = 1, control.a = 1, control.b = 1,
-                     treatment.w = 0, control.w = NULL)
-arm_names = list(treatment = "treatment", control = "control", control_h = "control_h")
-bayesian_lalonde_decision(endpoint = "binary", data_summary = data_summary,
-                          prior_params = prior_params, arm_names = arm_names,
-                          posterior_infer = FALSE, Lalonde_decision = FALSE,
-                          EXP_TRANSFORM = TRUE, lrv = 0.1, tv = 0.2, fgr = 0.2, fsr = 0.1)
-
-}

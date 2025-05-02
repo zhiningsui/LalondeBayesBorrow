@@ -35,17 +35,3 @@ If two posterior distributions are provided, it computes the posterior probabili
 between the two distributions falling within the range.
 For a single posterior distribution, it computes the probability of the estimate exceeding, being less than, or falling between specified values.
 }
-\examples{
-# Example: Posterior probability for a single distribution
-post1 <- convert_RBesT_mix(post = data.frame(w = 0.5, mu1 = 0,
-                                             sigma1 = 1, mu2 = 0.5, sigma2 = 1),
-                           endpoint = "continuous")
-posterior_prob(post1, value = 0.5, range_type = "greater")
-
-# Example: Posterior probability for the difference between two distributions
-post2 <- convert_RBesT_mix(post = data.frame(w = 0.9, mu1 = 0, sigma1 = 1,
-                                             mu2 = 0.5, sigma2 = 1),
-                           endpoint = "continuous")
-posterior_prob(post1, value = 0.5, post2 = post2, range_type = "between", value2 = 1)
-
-}

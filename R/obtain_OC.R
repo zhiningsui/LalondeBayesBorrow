@@ -11,12 +11,6 @@
 #'   - `proportion_ci`: Proportion of decisions made based on the credible interval.
 #' @export
 #'
-#' @examples
-#' # Example usage:
-#' decisions <- data.frame(decision_pr = c("go", "no-go", "consider"),
-#'                         decision_ci = c("go", "no-go", "consider"))
-#' obtain_oc(decisions)
-#'
 #' @import dplyr
 #' @import tidyr
 #' @importFrom rlang .data

@@ -1,105 +1,3 @@
-#' Calculate Response Frequencies for Binary Endpoints
-#'
-#' This function calculates the frequency of binary endpoint responses (0/1) across arms for multiple simulation repetitions.
-#' It groups the data by arm and simulation repetition to count the number of responses and the total number of patients in each arm.
-#'
-#' @param data A data frame. Individual-level binary outcomes (0/1) for all arms and repetitions of the simulation.
-#'
-#' @return A data frame. Each row represents the number of responses and the total number of patients in each arm for each simulation repetition.
-#' The data frame includes the following columns:
-#'   - `nsim`: Simulation repetition number.
-#'   - `arm.n`: Total number of patients in each arm.
-#'   - `arm.count`: Total number of responses in each arm.
-#' @export
-#'
-#' @examples
-#' data <- data.frame(nsim = rep(1:10, each = 200),
-#'                    arm = rep(c("A","B"), each = 100, times = 10),
-#'                    resp = stats::rbinom(2000, 1, 0.5))
-#' freq_binary(data = data)
-#'
-#' @import dplyr
-#' @import tidyr
-#' @importFrom rlang .data
-freq_binary <- function(data) {
-  freq <- data %>%
-    group_by(.data$nsim, .data$arm, .data$resp) %>%
-    summarise(count = n(), .groups = 'drop') %>%
-    complete(.data$nsim, .data$arm, .data$resp, fill = list(count = 0)) %>%
-    group_by(.data$nsim, .data$arm) %>%
-    mutate(n = sum(count)) %>%
-    ungroup() %>%
-    dplyr::filter(.data$resp == 1) %>%
-    group_by(.data$nsim, .data$arm) %>%
-    pivot_wider(names_from = .data$arm, values_from = c(.data$n, .data$count),
-                names_glue = "{arm}.{.value}") %>%
-    select(.data$nsim, ends_with(".n"), ends_with(".count"))
-
-  return(freq = freq)
-}
-
-#' Simulate PTSS values from a transformed Beta distribution
-#'
-#' @param n Integer. Number of observations to simulate.
-#' @param mu Numeric. Target mean PTSS on the [-100, 100] scale.
-#' @param sigma Numeric. Target standard deviation PTSS on the [-100, 100] scale.
-#' @param a Numeric. Lower bound of PTSS scale (default = -100).
-#' @param b Numeric. Upper bound of PTSS scale (default = 100).
-#'
-#' @return A numeric vector of simulated PTSS values.
-#' @export
-#'
-#' @examples
-#' set.seed(123)
-#' simulate_ptss_transformed_beta(n = 100, mu = 20, sigma = 20)
-simulate_ptss <- function(n, mu, sigma, a = -1, b = 1) {
-  mu_star <- (mu - a) / (b - a)
-  sigma_star <- sigma / (b - a)
-
-  # Method-of-moments
-  nu <- (mu_star * (1 - mu_star)) / (sigma_star^2) - 1
-
-  if (nu <= 0 || is.nan(nu)) {
-    warning(sprintf("Invalid combination of mu = %.3f and sigma = %.3f: nu = %.3f is not positive.", mu, sigma, nu))
-    return(rep(NA, n))
-  }
-
-  alpha <- mu_star * nu
-  beta <- (1 - mu_star) * nu
-
-  # Simulate
-  x <- rbeta(n, shape1 = alpha, shape2 = beta)
-  y <- a + (b - a) * x
-  return(y)
-}
-
-#' Validate PTSS parameters for transformed Beta distribution on [-1, 1]
-#'
-#' @param mu A numeric vector of means on [-1, 1]
-#' @param sigma A numeric vector of standard deviations (must be positive)
-#' @param a Lower bound of the interval (default: -1)
-#' @param b Upper bound of the interval (default: 1)
-#'
-#' @return A logical vector indicating whether each (mu, sigma) pair is valid.
-#'         Also throws warnings for invalid cases.
-#'
-#' @export
-validate_ptss_params <- function(mu, sigma, a = -1, b = 1) {
-  if (length(mu) != length(sigma)) stop("mu and sigma must be the same length")
-  mu_star <- (mu - a) / (b - a)
-  sigma_star <- sigma / (b - a)
-
-  sigma_max <- sqrt(mu_star * (1 - mu_star))  # from Beta variance constraint
-  is_valid <- (sigma_star < sigma_max) & (sigma_star > 0) & (mu_star > 0) & (mu_star < 1)
-
-  for (i in which(!is_valid)) {
-    warning(sprintf("Invalid PTSS parameters: mu = %.3f, sigma = %.3f; sigma must be < %.3f",
-                    mu[i], sigma[i], sigma_max[i]))
-  }
-
-  return(is_valid)
-}
-
 #' Retrieve All Functions from an Environment
 #'
 #' This function returns the names of all functions within a specified environment.
@@ -113,7 +11,6 @@ get_all_functions <- function(env = environment()) {
   functions <- sapply(all_objects, function(obj_name) is.function(get(obj_name, envir = env)))
   return(names(functions)[functions])
 }
-
 
 #' Convert to RBesT Mixture Distribution
 #'
@@ -238,6 +135,24 @@ create_data_gen_params <- function(params, endpoint) {
       treatment_h = get_entry("trt_h", "treatment_h"),
       control_h = get_entry("ctrl_h", "control_h")
     )
+  } else if (endpoint == "DpR") {
+    get_entry <- function(prefix, name) {
+      list(
+        n = check_param(params[[paste0(prefix, "_n")]], paste0(prefix, "_n")),
+        p = check_param(params[[paste0(prefix, "_p")]], paste0(prefix, "_p")),
+        mu = check_param(params[[paste0(prefix, "_mu")]], paste0(prefix, "_mu")),
+        sigma = check_param(params[[paste0(prefix, "_sigma")]], paste0(prefix, "_sigma")),
+        name = name
+      )
+    }
+
+    param_list <- list(
+      treatment = get_entry("trt", "treatment"),
+      control = get_entry("ctrl", "control"),
+      treatment_h = get_entry("trt_h", "treatment_h"),
+      control_h = get_entry("ctrl_h", "control_h")
+    )
+
   } else if (endpoint == "ptss") {
     a <- -1
     b <- 1
@@ -309,6 +224,8 @@ create_data_gen_params <- function(params, endpoint) {
     required_keys <- c("n", "mu", "sigma", "alpha", "beta")
   } else if (endpoint == "continuous") {
     required_keys <- c("n", "mu", "sigma")
+  } else if (endpoint == "DpR") {
+    required_keys <- c("n", "p", "mu", "sigma")
   } else {
     stop("Unsupported endpoint type.")
   }

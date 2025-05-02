@@ -35,20 +35,3 @@ This function calculates posterior estimates, standard deviations, and credible 
 If a second posterior distribution is not provided, it calculates these statistics for a single arm.
 The function also supports exponentiating the results, which can be useful for endpoints like log-transformed data.
 }
-\examples{
-# Example with one posterior distribution (single-arm inference):
-post1 <- convert_RBesT_mix(post = data.frame(w = 0.5, mu1 = 0, sigma1 = 1,
-                                             mu2 = 0.5, sigma2 = 1),
-                           endpoint = "continuous")
-post_inference_result <- posterior_inference(post1, quantiles = c(0.025, 0.975),
-                                             EXP_TRANSFORM = FALSE)
-
-# Example with two posterior distributions (treatment vs. control):
-post2 <- convert_RBesT_mix(post = data.frame(w = 0.9, mu1 = 0, sigma1 = 1,
-                                             mu2 = 0.5, sigma2 = 1),
-                           endpoint = "continuous")
-post_inference_result <- posterior_inference(post1, post2,
-                                             quantiles = c(0.025, 0.975),
-                                             EXP_TRANSFORM = TRUE)
-
-}

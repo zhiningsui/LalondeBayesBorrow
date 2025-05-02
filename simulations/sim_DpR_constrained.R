@@ -8,6 +8,7 @@ library(tidyverse)
 # Define historical control data
 param_grid_h <- expand.grid(
   ctrl_h_n = 200,
+  ctrl_h_p = 0.04,
   ctrl_h_mu = -0.2,
   ctrl_h_sigma = 0.3,
   stringsAsFactors = FALSE
@@ -15,15 +16,7 @@ param_grid_h <- expand.grid(
 
 data_gen_params_list_h <- lapply(apply(param_grid_h, 1, as.list),
                                  create_data_gen_params,
-                                 endpoint = "continuous")
-
-data_gen_params_h <- data_gen_params_list_h[[1]]
-control_h <- data_gen_params_h$control_h
-
-n_list <- c(control_h$n)
-mu_list <- c(control_h$mu)
-sigma_list <- c(control_h$sigma)
-arm_names <- c("control_h")
+                                 endpoint = "DpR")
 
 # Define current trial configurations
 param_grid1 <- expand.grid(
@@ -56,28 +49,15 @@ param_grid3 <- expand.grid(
   mutate(ctrl_n = trt_n,
          trt_mu = ctrl_mu - 0.2)
 
-
-param_grid4 <- expand.grid(
-  trt_n = c(20, 30, 40),
-  ctrl_mu = c(-0.4, -0.3, -0.2, -0.1, 0),
-  trt_sigma = 0.3,
-  ctrl_sigma = 0.3,
-  stringsAsFactors = FALSE
-) %>%
-  mutate(ctrl_n = trt_n,
-         trt_mu = ctrl_mu)
-
 param_grid <- bind_rows(param_grid1, param_grid2, param_grid3)
+param_grid$ctrl_p <- -0.2 * param_grid$ctrl_mu
+param_grid$trt_p <- -0.2 * param_grid$trt_mu
 
 data_gen_params_list_h <- lapply(apply(param_grid_h, 1, as.list),
-                                 create_data_gen_params, endpoint = "continuous")
+                                 create_data_gen_params, endpoint = "DpR")
 
 data_gen_params_list <- lapply(apply(param_grid, 1, as.list),
-                               create_data_gen_params, endpoint = "continuous")
-
-# Create parameter lists
-param_grid_h_list <- lapply(apply(param_grid_h, 1, as.list), create_data_gen_params, endpoint = "continuous")
-param_grid_list <- lapply(apply(param_grid, 1, as.list), create_data_gen_params, endpoint = "continuous")
+                               create_data_gen_params, endpoint = "DpR")
 
 data_gen_params_h <- data_gen_params_list_h[[1]]
 
@@ -94,6 +74,7 @@ for (i in seq_along(data_gen_params_list)) {
   for (arm in names(data_gen_params)) {
     cat("\t Arm:", arm, "\n")
     cat("\t  n:", data_gen_params[[arm]]$n, "\n")
+    cat("\t  p:", data_gen_params[[arm]]$p, "\n")
     cat("\t  mu:", data_gen_params[[arm]]$mu, "\n")
     cat("\t  sigma:", data_gen_params[[arm]]$sigma, "\n\n")
   }
@@ -101,14 +82,17 @@ for (i in seq_along(data_gen_params_list)) {
   n_arms <- length(data_gen_params)
   arm_names <- sapply(data_gen_params, function(x) x$name)
   n_list <- sapply(data_gen_params, function(x) x$n)
+  p_list <- sapply(data_gen_params, function(x) x$p)
   mu_list <- sapply(data_gen_params, function(x) x$mu)
   sigma_list <- sapply(data_gen_params, function(x) x$sigma)
 
   # Generate simulation dataset
-  data <- data_gen_continuous(n_arms = n_arms,
-                              arm_names = arm_names,
-                              nsim = nsim, n_list = n_list,
-                              mu_list = mu_list, sigma_list = sigma_list)
+  data <- data_gen_DpR(n_arms = n_arms, arm_names = arm_names,
+                       nsim = nsim, n_list = n_list, p_list = p_list,
+                       mu_list = mu_list, sigma_list = sigma_list)
+
+  hist(data$data$value[data$data$arm == "control"])
+  hist(data$data$value[data$data$arm == "treatment"])
 
   settings <- c(list(true_value = data$true_value), data_gen_params, data_gen_params_h)
   settings <- as.data.frame(t(unlist(settings)), stringsAsFactors = FALSE) %>%
@@ -182,8 +166,8 @@ for (i in seq_along(data_gen_params_list)) {
   cat("Total time for data_gen_params set", i, "=", round(difftime(end_time_i, start_time_i, units = "secs"), 2), "seconds\n\n")
 }
 
-saveRDS(bayes_results, file = "sim_DpR_bayes_results.rds")
-bayes_results <- readRDS(file = "sim_DpR_bayes_results.rds")
+saveRDS(bayes_results, file = "simulations/sim_DpR_constrained_bayes_results.rds")
+bayes_results <- readRDS(file = "simulations/sim_DpR_constrained_bayes_results.rds")
 
 post_params_all <- data.frame()
 post_est_ci_all <- data.frame()
@@ -215,12 +199,73 @@ bayes_results_all <- list(
   oc_all = oc_all
 )
 
-saveRDS(bayes_results_all, "sim_DpR_bayes_results_df.rds")
+saveRDS(bayes_results_all, "simulations/sim_DpR_constrained_bayes_results_df.rds")
 
 
 # Analysis -------------------------------------------------------------
 
-bayes_results_all <- readRDS("sim_DpR_bayes_results_df.rds")
+bayes_results_all <- readRDS("simulations/sim_DpR_constrained_bayes_results_df.rds")
+
+## Check posterior parameters
+post_params_all <- bayes_results_all$post_params_all
+post_params_all <- post_params_all  %>%
+  mutate(across(
+    .cols = -c(borrowing, ends_with(".name")),
+    .fns = as.numeric
+  ))
+
+post_params_all$control.mean.diff <- post_params_all$control.mu - post_params_all$control_h.mu
+
+post_params_all$borrowing <- factor(post_params_all$borrowing,
+                                    levels = c("No", "Yes"),
+                                    labels=c("Borrowing: No", "Borrowing: Yes"))
+
+post_params_all$control.mean.diff <- factor(post_params_all$control.mean.diff,
+                                            levels = c("-0.2", "-0.1", "0", "0.1", "0.2"))
+
+post_params_all$control.n <- factor(post_params_all$control.n,
+                                    levels = c("20", "30", "40"),
+                                    labels=c(expression(paste(n, " = 20")),
+                                             expression(paste(n, " = 30")),
+                                             expression(paste(n, " = 40"))))
+
+p1 <- post_params_all %>%
+  filter(borrowing == "Borrowing: Yes") %>% # Use filter() for subsetting
+  ggplot(aes(x = control.mean.diff, y = control.w_prior)) +
+  geom_boxplot(width = 0.6, outlier.size = 0.6, outlier.alpha = 0.5) +
+  annotate("rect", xmin = 1.5, xmax = 4.5,
+           ymin = -Inf, ymax = Inf,
+           alpha = 0.2, fill = "blue") +
+  facet_grid(~control.n,
+             labeller = labeller(control.n = label_parsed)) +
+  # Use the actual level values for 'breaks' in scale_x_discrete
+  # This ensures the correct levels are shown and in the right order
+  scale_x_discrete(breaks = levels_order,
+                   labels = levels_order) + # Labels can often be the same as breaks
+  labs(x = expression(paste(theta[c], " - ", theta[ch])),
+       y = "Prior weight of borrowing",
+       title = "Prior Weight of Informative Component of SAM Prior") +
+  theme_bw() +
+  theme(strip.text.x = element_text(size=10))
+
+p2 <- ggplot(post_params_all %>% subset(borrowing =="Borrowing: Yes" ),
+             aes(x = control.mean.diff, y = control.w_post)) +
+  geom_boxplot(width = 0.6, outlier.size = 0.6, outlier.alpha = 0.5) +
+  annotate("rect", xmin = 1.5, xmax = 4.5,
+           ymin = -Inf, ymax = Inf,
+           alpha = 0.2, fill = "blue") +
+  facet_grid(~control.n,
+             labeller = labeller(control.n = label_parsed)) +
+  labs(x = expression(paste(theta[c], " - ", theta[ch])),
+       y = "Posterior weight of borrowing",
+       title = "Posterior Weight of Informative Component of SAM Prior (CSD = 0.15)") +
+  theme_bw() +
+  theme(strip.text.x = element_text(size=10))
+
+p1 / p2
+
+ggsave(filename = "simulations/sim_DpR_constrained_SAM_weight.jpg", p1 / p2,
+       width = 8, height = 6)
 
 ###
 metrics_post_dist_all <- bayes_results_all$metrics_post_dist_all
@@ -337,7 +382,7 @@ p <- p1 / p2 / p3 +
         legend.box.margin=margin(-5,-5,-5,0),
         plot.tag = element_text(size = 14)
   )
-ggsave(filename = "sim_DpR_dist_check_metrics.jpg", p, width = 9.5, height = 11.5)
+ggsave(filename = "simulations/sim_DpR_constrained_dist_check_metrics.jpg", p, width = 9.5, height = 11.5)
 
 p <- p1 / p3 +
   plot_layout(guides = "collect") +
@@ -352,7 +397,7 @@ p <- p1 / p3 +
         # legend.box.margin=margin(-5,-5,-5,0),
         plot.tag = element_text(size = 17)
   )
-ggsave(filename = "sim_DpR_dist_check_metrics_2.jpg", p, width = 9, height = 9)
+ggsave(filename = "simulations/sim_DpR_constrained_dist_check_metrics_2.jpg", p, width = 9, height = 9)
 
 
 metrics_df <- metrics_post_dist_all %>%
@@ -448,7 +493,7 @@ p_risk <- ggplot(metrics_long,
         axis.text = element_text(size = 12),
         strip.text = element_text(size = 13)
   )
-ggsave("sim_DpR_conflict_vs_risk.jpg", p_risk, width = 7.5, height = 4)
+ggsave("simulations/sim_DpR_constrained_conflict_vs_risk.jpg", p_risk, width = 7.5, height = 4)
 
 
 oc_new <- data.frame()
@@ -512,7 +557,7 @@ p_oc <- p_list[[1]] + p_list[[2]] + p_list[[3]] +
         axis.title = element_text(size = 13),
         axis.text = element_text(size = 12),
         strip.text = element_text(size = 13))
-ggsave("sim_DpR_zone_size.jpg", p_oc, width = 14, height = 8)
+ggsave("simulations/sim_DpR_constrained_zone_size.jpg", p_oc, width = 14, height = 8)
 
 oc2 <- oc_new %>%
   select(control.mean.diff, control.n, true_value.compare_true, borrowing, decision_pr, proportion_pr) %>%

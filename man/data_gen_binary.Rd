@@ -13,34 +13,34 @@ data_gen_binary(
 )
 }
 \arguments{
-\item{n_arms}{A scalar. The number of arms to be generated in the simulation.}
+\item{n_arms}{Number of arms (optional, inferred from arm_names if not provided).}
 
 \item{nsim}{A scalar. The number of repetitions of the simulation to be performed.}
 
-\item{n_list}{A list. Each element represents the number of patients in each arm.}
+\item{n_list}{A named list. Each element represents the number of patients in
+the corresponding arm (names must match arm_names). Must contain positive integers.}
 
-\item{prob_list}{A list. Each element represents the probability of response (binary outcome = 1) for each arm.}
+\item{prob_list}{A named list. Each element represents the probability of response (binary outcome = 1)
+for the corresponding arm (names must match arm_names). Must contain numeric values between 0 and 1.}
 
-\item{arm_names}{A list. Each element represents the name of the corresponding arm.}
+\item{arm_names}{A character vector of arm names.}
 }
 \value{
-A list of data frames:
-  - \code{data}: A data frame containing individual-level binary outcomes (0/1) for all arms and all repetitions of the simulation.
-  - \code{true_value}: A data frame of true response rates for each arm, along with the difference in response rates between the treatment and control arms (if both are present).
-  - \code{freq}: A data frame of response frequencies, where each row represents the number of responses and the total number of patients in each arm for each simulation repetition.
+A list containing:
+\itemize{
+  \item \code{data}: A data.table with columns nsim, id, arm, resp, containing
+    all simulated binary outcomes (0/1) for all arms and all repetitions.
+  \item \code{true_value}: A data frame of true response rates for each arm,
+    along with the difference in response rates between the treatment and control
+    arms (if both are present).
+  \item \code{freq}: A data.table of response frequencies per arm per simulation,
+    with columns for nsim, arm, count (number of responses), and n (total patients).
+}
 }
 \description{
-This function simulates binary endpoint data (0/1) for multiple study arms across several simulation repetitions.
-Each arm's data is generated based on the specified probabilities of response, and the function returns
-individual-level data as well as summary statistics for the true response rates and response frequencies.
-}
-\examples{
-# Example of generating binary response data for 2 arms, 100 patients per arm,
-# and 10 simulation repetitions:
-n_list <- c(treatment = 50, control = 50, control_h = 200)
-prob_list <- c(treatment = 0.4, control = 0.2, control_h = 0.3)
-arm_names <- c(treatment = "treatment", control = "control", control_h = "control_h")
-sim_data_bin <- data_gen_binary(n_arms = 3, nsim = 10, n_list = n_list,
-                                prob_list = prob_list, arm_names = arm_names)
-
+This function simulates binary endpoint data (0/1) for multiple study arms
+across several simulation repetitions. Each arm's data is generated based on
+the specified probabilities of response using a binomial distribution. The
+function returns individual-level data, true response rates, and response
+frequencies per arm per simulation.
 }

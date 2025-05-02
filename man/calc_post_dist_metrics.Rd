@@ -27,14 +27,3 @@ A data frame containing the evaluation metrics for the posterior distribution, i
 This function calculates various evaluation metrics for the posterior distribution, including the average bias, standard error, empirical standard deviation, and nominal coverage probability.
 For the "g-score" endpoint, it calculates the log-median ratio, and for the "OR" endpoint, it calculates the rate difference.
 }
-\examples{
-# Example with a continuous endpoint:
-post1 <- convert_RBesT_mix(post = data.frame(w = 0.5, mu1 = 0, sigma1 = 1, mu2 = 0.5, sigma2 = 1),
-                           endpoint = "continuous")
-post2 <- convert_RBesT_mix(post = data.frame(w = 0.9, mu1 = 0, sigma1 = 1, mu2 = 0.5, sigma2 = 1),
-                           endpoint = "continuous")
-post_inference_result <- posterior_inference(post1, post2, quantiles = c(0.025, 0.975),
-                         EXP_TRANSFORM = TRUE)
-
-calc_post_dist_metrics("g-score", true_value = 1.2, post_est_ci = post_inference_result)
-}

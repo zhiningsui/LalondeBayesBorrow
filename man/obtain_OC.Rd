@@ -20,10 +20,3 @@ A data frame that includes the original settings along with the calculated propo
 This function calculates the operating characteristics (OC) by computing the proportion of decisions made based on the posterior probability and the credible interval from a set of decision results.
 It combines these proportions with the provided settings data to return a comprehensive summary.
 }
-\examples{
-# Example usage:
-decisions <- data.frame(decision_pr = c("go", "no-go", "consider"),
-                        decision_ci = c("go", "no-go", "consider"))
-obtain_oc(decisions)
-
-}

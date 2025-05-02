@@ -20,38 +20,6 @@
 #'   - `post_est_ci`: A data frame containing evaluating metrics for the posterior distribution.
 #'   - `post_inference`: A data frame containing the posterior probabilities and credible interval, and the decisions based on the Lalonde framework.
 #' @export
-#'
-#' @examples
-#' # Example with a continuous endpoint:
-#' data_summary <- data.frame(nsim = 1:10,
-#'                            treatment.n = 50, control.n = 50, control_h.n = 200,
-#'                            treatment.mu_hat = runif(n = 10, 0.3, 0.5),
-#'                            control.mu_hat = runif(n = 10, 0.1, 0.5),
-#'                            control_h.mu_hat = -1, treatment.s = 1,
-#'                            control.s = 1, control_h.s = 1)
-#' prior_params <- list(treatment.delta = log(0.85), control.delta = log(0.85),
-#'                      treatment.w = 0, control.w = NULL)
-#' arm_names = list(treatment = "treatment", control = "control", control_h = "control_h")
-#' bayesian_lalonde_decision(endpoint = "continuous", data_summary = data_summary,
-#'                           prior_params = prior_params, arm_names = arm_names,
-#'                           posterior_infer = FALSE, Lalonde_decision = FALSE,
-#'                           EXP_TRANSFORM = TRUE, lrv = 0.8, tv= 0.5, fgr = 0.2, fsr = 0.1)
-#'
-#' # Example with a binary endpoint:
-#' data_summary <- data.frame(nsim = 1:10,
-#'                            treatment.n = 50, control.n = 50, control_h.n = 200,
-#'                            treatment.count = rbinom(10, 50, 0.5),
-#'                            control.count = rbinom(10, 50, 0.2),
-#'                            control_h.count = rbinom(10, 200, 0.3))
-#' prior_params <- list(treatment.delta = 0.1, control.delta = 0.1,
-#'                      treatment.a = 1, treatment.b = 1, control.a = 1, control.b = 1,
-#'                      treatment.w = 0, control.w = NULL)
-#' arm_names = list(treatment = "treatment", control = "control", control_h = "control_h")
-#' bayesian_lalonde_decision(endpoint = "binary", data_summary = data_summary,
-#'                           prior_params = prior_params, arm_names = arm_names,
-#'                           posterior_infer = FALSE, Lalonde_decision = FALSE,
-#'                           EXP_TRANSFORM = TRUE, lrv = 0.1, tv = 0.2, fgr = 0.2, fsr = 0.1)
-#'
 #' @import dplyr
 #' @import tidyr
 #' @import RBesT
@@ -65,13 +33,18 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
                                       EXP_TRANSFORM = FALSE) {
   nsims = unique(data_summary$nsim)
 
-  if (nzchar(chk) && chk == "TRUE") {
-    # use 2 cores in CRAN/Travis/AppVeyor
-    ncore <- 2
+  # Detect if running on CRAN, Travis, GitHub Actions, or similar
+  is_ci <- Sys.getenv("CI") == "true" ||
+    Sys.getenv("TRAVIS") == "true" ||
+    Sys.getenv("GITHUB_ACTIONS") == "true" ||
+    Sys.getenv("_R_CHECK_LIMIT_CORES_") == "true"
+
+  if (is_ci) {
+    ncore <- 2  # safer for CI/CRAN
   } else {
-    # use all cores in devtools::test()
-    ncore <- detectCores() - 1
+    ncore <- max(1, detectCores() - 1)  # use more cores locally
   }
+
   cl <- makeCluster(ncore)
   required_vars <- c("endpoint", "data_summary", "lrv", "tv", "fgr", "fsr", "arm_names",
                      "prior_params")
@@ -203,3 +176,6 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
 
   return(list(post_params = post_params, post_est_ci = post_est_ci, post_inference = post_inference))
 }
+
+
+
