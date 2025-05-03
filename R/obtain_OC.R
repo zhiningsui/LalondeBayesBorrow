@@ -3,7 +3,6 @@
 #' This function calculates the operating characteristics (OC) by computing the proportion of decisions made based on the posterior probability and the credible interval from a set of decision results.
 #' It combines these proportions with the provided settings data to return a comprehensive summary.
 #'
-#' @param settings A data frame. Contains the settings or parameters used in the simulations or trials.
 #' @param decisions A data frame. Contains the decisions made in each simulation or trial, with columns for posterior probability-based decisions (`decision_pr`) and credible interval-based decisions (`decision_ci`).
 #'
 #' @return A data frame that includes the original settings along with the calculated proportions of decisions based on the posterior probability and credible interval. The output includes:

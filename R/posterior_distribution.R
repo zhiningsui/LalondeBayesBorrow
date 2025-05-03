@@ -17,7 +17,6 @@
 #' @param w A scalar. Initial weight assigned to the informative component of the mixture prior. Set to `0` if no borrowing. If `NULL`, the SAM prior is used for automatic conflict detection.
 #' @param a A scalar. The alpha parameter of the beta prior for binary endpoints (used in the mixture prior if borrowing).
 #' @param b A scalar. The beta parameter of the beta prior for binary endpoints (used in the mixture prior if borrowing).
-#' @param gate A scalar.
 #'
 #' @return A list containing the posterior distribution parameters:
 #'   - For continuous endpoints:

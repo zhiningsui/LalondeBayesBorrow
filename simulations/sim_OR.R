@@ -11,8 +11,32 @@ param_grid_h <- expand.grid(
   stringsAsFactors = FALSE
 )
 
+# param_grid1 <- expand.grid(
+#   trt_n = c(20, 30, 40, 50, 60), # Sample size for the treatment group.
+#   ctrl_prob = seq(0.1, 0.5, 0.1), # Probability of zero g-scores in the control group.
+#   stringsAsFactors = FALSE
+# ) %>%
+#   mutate(ctrl_n = trt_n,
+#          trt_prob = 0.1 + ctrl_prob)
+#
+# param_grid2 <- expand.grid(
+#   trt_n = c(20, 30, 40, 50, 60), # Sample size for the treatment group.
+#   ctrl_prob = seq(0.1, 0.5, 0.1), # Probability of zero g-scores in the control group.
+#   stringsAsFactors = FALSE
+# ) %>%
+#   mutate(ctrl_n = trt_n,
+#          trt_prob = 0.15 + ctrl_prob)
+#
+# param_grid3 <- expand.grid(
+#   trt_n = c(20, 30, 40, 50, 60), # Sample size for the treatment group.
+#   ctrl_prob = seq(0.1, 0.5, 0.1), # Probability of zero g-scores in the control group.
+#   stringsAsFactors = FALSE
+# ) %>%
+#   mutate(ctrl_n = trt_n,
+#          trt_prob = 0.2 + ctrl_prob)
+
 param_grid1 <- expand.grid(
-  trt_n = c(20, 40, 60), # Sample size for the treatment group.
+  trt_n = c(30, 50), # Sample size for the treatment group.
   ctrl_prob = seq(0.1, 0.5, 0.1), # Probability of zero g-scores in the control group.
   stringsAsFactors = FALSE
 ) %>%
@@ -20,7 +44,7 @@ param_grid1 <- expand.grid(
          trt_prob = 0.1 + ctrl_prob)
 
 param_grid2 <- expand.grid(
-  trt_n = c(20, 40, 60), # Sample size for the treatment group.
+  trt_n = c(30, 50), # Sample size for the treatment group.
   ctrl_prob = seq(0.1, 0.5, 0.1), # Probability of zero g-scores in the control group.
   stringsAsFactors = FALSE
 ) %>%
@@ -28,7 +52,7 @@ param_grid2 <- expand.grid(
          trt_prob = 0.15 + ctrl_prob)
 
 param_grid3 <- expand.grid(
-  trt_n = c(20, 40, 60), # Sample size for the treatment group.
+  trt_n = c(30, 50), # Sample size for the treatment group.
   ctrl_prob = seq(0.1, 0.5, 0.1), # Probability of zero g-scores in the control group.
   stringsAsFactors = FALSE
 ) %>%
@@ -47,8 +71,9 @@ data_gen_params_list <- lapply(apply(param_grid, 1, as.list),
 nsim = 10000
 bayes_results <- list()
 data_gen_params_h <- data_gen_params_list_h[[1]]
-
 for (i in seq_along(data_gen_params_list)) {
+  start_time_i <- Sys.time()
+
   data_gen_params <- data_gen_params_list[[i]]
   cat("Running", nsim, "simulations for data_gen_params set", i, "\n\n")
   for (arm in names(data_gen_params)) {
@@ -81,6 +106,8 @@ for (i in seq_along(data_gen_params_list)) {
 
   cat("Start Bayesian analysis.\n")
   for (k in seq_along(prior_params_list)) {
+    start_time_k <- Sys.time()
+
     prior_params <- prior_params_list[[k]]
 
     borrow_name <- names(prior_params_list)[k]
@@ -112,7 +139,12 @@ for (i in seq_along(data_gen_params_list)) {
     post$settings <- settings
 
     bayes_results[[length(bayes_results)+1]] <- post
+
+    end_time_k <- Sys.time()
+    cat("Time for Bayesian analysis with borrowing", borrow_name, "=", round(difftime(end_time_k, start_time_k, units = "secs"), 2), "seconds\n\n")
   }
+  end_time_i <- Sys.time()
+  cat("Total time for data_gen_params set", i, "=", round(difftime(end_time_i, start_time_i, units = "secs"), 2), "seconds\n\n")
 }
 
 saveRDS(bayes_results, file = "simulations/sim_OR_bayes_results_csd15.rds")
