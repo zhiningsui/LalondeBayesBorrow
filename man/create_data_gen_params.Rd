@@ -7,34 +7,81 @@
 create_data_gen_params(params, endpoint)
 }
 \arguments{
-\item{params}{A list. Parameters for data generation.
-- `trt_n`: A scalar. Sample size for the treatment group.
-- `ctrl_n`: A scalar. Sample size for the control group. If not provided, it will be set to match `trt_n`.
-- `trt_prob`: A scalar. Probability for the treatment group, interpretation based on the `endpoint`.
-- `ctrl_prob`: A scalar. Probability for the control group, interpretation based on the `endpoint`.
-- `trt_mu`: A scalar. Mean value for the treatment group (for non-zero values in g-scores or other continuous endpoints).
-- `ctrl_mu`: A scalar. Mean value for the control group.
-- `trt_sigma`: A scalar. Standard deviation for the treatment group (for non-zero values in g-scores or other continuous endpoints).
-- `ctrl_sigma`: A scalar. Standard deviation for the control group.
-- Additional parameters for historical data (e.g., `trt_h_n`, `ctrl_h_prob`) may also be included.}
+\item{params}{A list. Contains the parameters for data generation. Expected
+parameters follow a naming convention: \verb{[arm_prefix]_[parameter_name]},
+where \verb{[arm_prefix]} can be \code{trt} (treatment), \code{ctrl} (control),
+\code{trt_h} (historical treatment), or \code{ctrl_h} (historical control).
+Required \verb{[parameter_name]}s depend on the \code{endpoint}. Examples include
+\code{n} (sample size), \code{p} (probability), \code{mu} (mean), \code{sigma} (standard deviation).}
 
-\item{endpoint}{A string. Specifies the type of endpoint ("g-score" or "OR").}
+\item{endpoint}{A character string. Specifies the type of endpoint. Must be one
+of \code{"continuous"}, \code{"binary"}, \code{"DpR"}, or \code{"g-score"}.}
 }
 \value{
-A nested list. Processed parameters for each group, including `treatment`, `control`, `treatment_h`, and `control_h` if historical data is provided.
-Missing values are replaced with `NA`, and a warning is issued for each missing parameter.
+A named list where each element corresponds to a study arm
+(\code{treatment}, \code{control}, \code{treatment_h}, \code{control_h}). Each arm's element is
+a list containing its data generating parameters (\code{n}, \code{p}, \code{mu}, \code{sigma}, etc.,
+depending on the endpoint) and its \code{name}. Arms for which required parameters
+were missing (\code{NULL} or resulted in \code{NA}) or \code{n} was non-positive are excluded
+from the list. Missing parameters for included arms are reported via warnings
+and set to \code{NA}.
 }
 \description{
 This function processes and validates a set of parameters for generating data
-related to treatment and control groups, along with their historical counterparts.
-It checks for missing values and replaces them with `NA` while issuing warnings.
-The function supports different endpoints, and the interpretation of the `prob` parameter
-varies depending on the specified endpoint:
-  - For the "g-score" endpoint, `prob` refers to the probability of zero g-scores.
-  - For the "OR" endpoint, `prob` refers to the probability of an event occurring.
+for different study arms (treatment, control, and their historical counterparts).
+It checks for missing parameters, replaces them with \code{NA} while issuing warnings,
+and structures the valid parameters into a nested list format suitable for
+data simulation functions. The function supports various endpoint types,
+each requiring a specific set of parameters and potentially applying
+transformations (like logarithm for means in "g-score").
+}
+\details{
+Arms (treatment, control, historical treatment, historical control) are
+included in the output list only if all their required parameters for the
+specified \code{endpoint} are present (not \code{NULL} and not resulting in \code{NA} after
+initial checks), and if the sample size \code{n} is positive.
+
+The interpretation of parameters depends on the \code{endpoint}:
+\itemize{
+\item \strong{continuous}: Parameters for a normal continuous outcome include a mean (\code{mu}) and a standard deviation (\code{sigma}). Required parameters per arm: \code{n}, \code{mu}, \code{sigma}.
+\item \strong{binary}: Parameters for a binary outcome include a probability of the event occurring (\code{p}). Required parameters per arm: \code{n}, \code{p}.
+\item \strong{DpR} (Depth of Response): Parameters include a probability of complete tumor shrinkage (\code{p}), a mean (\code{mu}), and a standard deviation (\code{sigma}) for the continuous outcome part. Required parameters per arm: \code{n}, \code{p}, \code{mu}, \code{sigma}.
+\item \strong{g-score}: Parameters for zero-inflated continuous g-scores include a probability of observing a zero value (\code{p}), a mean (\code{mu}, log-transformed internally) and a standard deviation (\code{sigma}) for the non-zero part. Required parameters per arm: \code{n}, \code{p}, \code{mu}, \code{sigma}.
+}
 }
 \examples{
-params <- list(trt_n = 100, trt_prob = 0.6, trt_mu = 1.5, trt_sigma = 0.3,
-               ctrl_n = 100, ctrl_prob = 0.4, ctrl_mu = 1.2, ctrl_sigma = 0.2)
-create_data_gen_params(params, "g-score")
+# Example for 'continuous' endpoint with missing historical data
+params_continuous <- list(
+  trt_n = 150, trt_mu = 75, trt_sigma = 10,
+  ctrl_n = 150, ctrl_mu = 70, ctrl_sigma = 11,
+  trt_h_n = 80, trt_h_mu = 76 # Missing sigma, this arm will be excluded
+)
+data_params_continuous <- create_data_gen_params(params_continuous, "continuous")
+str(data_params_continuous)
+
+# Example for 'binary' endpoint
+params_binary <- list(
+  trt_n = 200, trt_p = 0.7,
+  ctrl_n = 200, ctrl_p = 0.5,
+  ctrl_h_n = 100, ctrl_h_p = 0.55
+)
+data_params_binary <- create_data_gen_params(params_binary, "binary")
+str(data_params_binary)
+
+# Example for 'DpR' endpoint
+params_DpR <- list(
+  trt_n = 120, trt_p = 0.9, trt_mu = 5, trt_sigma = 1.2, # p=prob of complete shrinkage
+  ctrl_n = 120, ctrl_p = 0.8, ctrl_mu = 4.5, ctrl_sigma = 1.5
+)
+data_params_DpR <- create_data_gen_params(params_DpR, "DpR")
+str(data_params_DpR)
+
+# Example for 'g-score' endpoint
+params_gscore <- list(
+  trt_n = 100, trt_p = 0.2, trt_mu = 1.5, trt_sigma = 0.5, # p=prob of zero g-score
+  ctrl_n = 100, ctrl_p = 0.4, ctrl_mu = 1.2, ctrl_sigma = 0.6
+)
+data_params_gscore <- create_data_gen_params(params_gscore, "g-score")
+str(data_params_gscore)
+
 }

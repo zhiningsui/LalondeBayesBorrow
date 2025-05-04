@@ -2,13 +2,13 @@
 % Please edit documentation in R/posterior_distribution.R
 \name{posterior_distribution}
 \alias{posterior_distribution}
-\title{Obtain Posterior Distribution for Continuous or Binary Endpoints}
+\title{Obtain Posterior Distribution for Single Arm}
 \usage{
 posterior_distribution(
   endpoint,
   current,
   historical = NULL,
-  delta = log(0.85),
+  delta = NULL,
   w = NULL,
   a = 0.01,
   b = 0.01,
@@ -20,45 +20,158 @@ posterior_distribution(
 )
 }
 \arguments{
-\item{endpoint}{A string. The type of endpoint, either "continuous" or "binary".}
+\item{endpoint}{A string. The type of endpoint, either \code{'continuous'}
+(assumes Normal likelihood and Normal-Inverse-Gamma conjugacy on mean/variance)
+or \code{'binary'} (assumes Binomial likelihood and Beta conjugacy).}
 
-\item{current}{A named vector. Current trial data:
-- For a continuous endpoint, the vector should include:
-  - `n`: Number of patients.
-  - `mu_hat`: Mean of the normal sampling distribution.
-  - `s`: Standard deviation of the normal sampling distribution.
-- For a binary endpoint, the vector should include:
-  - `n`: Number of patients.
-  - `count`: Number of responses.}
+\item{current}{A named list or vector containing current trial data:
+\itemize{
+\item For \code{'continuous'}: must include \code{n} (number of patients), \code{mu_hat} (sample mean), \code{s} (sample standard deviation the mean).
+\item For \code{'binary'}: must include \code{n} (number of patients), \code{count} (number of responses/events).
+Sample size \code{n} must be positive.
+}}
 
-\item{historical}{A named vector. Historical trial data in the same format as the `current` vector. If `NULL`, borrowing is not performed.}
+\item{historical}{A named list or vector containing historical trial data
+in the same format as the \code{current} parameter. If \code{NULL} (default),
+no historical data is used, and borrowing is disabled (\code{w} is effectively 0).
+If provided, historical sample size \code{n} must be non-negative.}
 
-\item{delta}{A scalar. The clinically significant difference for the SAM prior, used as the threshold for detecting prior-data conflict (default is `log(0.85)` for continuous endpoints).}
+\item{delta}{A scalar positive value, or \code{NULL}. The clinical significant difference
+threshold used in the SAM prior calculation to detect prior-data conflict.
+Only used if \code{w} is \code{NULL}. The interpretation depends on the \code{endpoint}:
+for \code{'continuous'}, it's on the mean scale; for \code{'binary'}, it's on the
+probability scale. If \code{NULL} and \code{w} is \code{NULL}, default values (0.2 for
+continuous, 0.1 for binary) are used.}
 
-\item{w}{A scalar. Initial weight assigned to the informative component of the mixture prior. Set to `0` if no borrowing. If `NULL`, the SAM prior is used for automatic conflict detection.}
+\item{w}{A scalar value between 0 and 1, or \code{NULL}.
+\itemize{
+\item If a numeric value (0 to 1): Specifies a fixed initial weight for
+the informative (historical) component of the mixture prior. Borrowing occurs
+according to this fixed weight.
+\item If \code{NULL} (default): The SAM prior is used. The initial weight for
+the informative component is automatically calculated based on the
+agreement between historical and current data, using \code{delta}.
+Note: If \code{historical} is \code{NULL} or \code{ess_h} is 0, \code{w} is effectively forced to 0,
+and no borrowing occurs regardless of the input \code{w}.
+}}
 
-\item{a}{A scalar. The alpha parameter of the beta prior for binary endpoints (used in the mixture prior if borrowing).}
+\item{a}{A scalar positive value. The alpha parameter for the \emph{non-informative}
+Beta prior component (used only for \code{endpoint = "binary"}). Defaults to 0.01.}
 
-\item{b}{A scalar. The beta parameter of the beta prior for binary endpoints (used in the mixture prior if borrowing).}
+\item{b}{A scalar positive value. The beta parameter for the \emph{non-informative}
+Beta prior component (used only for \code{endpoint = "binary"}). Defaults to 0.01.}
 
-\item{gate}{A scalar.}
+\item{a0}{A scalar positive value. The base alpha parameter for the \emph{informative}
+Beta prior component (used only for \code{endpoint = "binary"}). This parameter
+(along with \code{b0}) serves as a base prior which is updated by the discounted
+historical data to form the informative prior component parameters. Defaults to 0.01.}
+
+\item{b0}{A scalar positive value. The base beta parameter for the \emph{informative}
+Beta prior component (used only for \code{endpoint = "binary"}). Defaults to 0.01.}
+
+\item{theta0}{A scalar. The mean parameter for the \emph{non-informative} Normal prior
+component (used only for \code{endpoint = "continuous"}). Defaults to 0.}
+
+\item{s0}{A scalar positive value. The standard deviation parameter for the
+\emph{non-informative} Normal prior component (used only for \code{endpoint = "continuous"}).
+Defaults to 100.}
+
+\item{ess_h}{A scalar non-negative finite value, or \code{NULL}. The Effective Sample Size
+to use for the historical data. This implements a power prior approach, where
+the historical data likelihood is raised to the power of \code{ess_h / nh}.
+If \code{NULL} (default), the power is 1 (full historical data influence).
+If 0, historical data is fully discounted, equivalent to no borrowing.}
 }
 \value{
-A list containing the posterior distribution parameters:
-  - For continuous endpoints:
-    - `w_prior`: Weight of the prior after conflict detection (or user-defined weight).
-    - `post`: A list with:
-      - `w`: Posterior weight of the informative component.
-      - `theta1`, `sigma1`: Posterior mean and standard deviation from informative prior.
-      - `theta2`, `sigma2`: Posterior mean and standard deviation from non-informative prior.
-  - For binary endpoints:
-    - `w_prior`: Weight of the prior after conflict detection (or user-defined weight).
-    - `post`: A list with:
-      - `w`: Posterior weight of the informative component.
-      - `a1`, `b1`: Parameters of the informative beta posterior.
-      - `a2`, `b2`: Parameters of the non-informative beta posterior.
+A list containing the results of the posterior calculation:
+\itemize{
+\item \code{w_prior}: The initial mixture weight used for the informative prior
+component \emph{before} updating with current data. This is either the input \code{w}
+or the weight calculated by the SAM prior if \code{w} was \code{NULL}. Returns 0
+if no historical data was provided, historical \code{n} was 0, or \code{ess_h} was 0.
+\item \code{post}: A named list containing the parameters of the resulting
+two-component mixture posterior distribution, suitable for use with RBesT:
+\itemize{
+\item \code{w}: The \emph{posterior} weight of the informative component. This is calculated
+by updating the \code{w_prior} with the current data via Likelihood Ratio Test.
+\item For continuous (\code{mixnorm} format): \code{mu1}, \code{sigma1} (mean and SD of
+the informative posterior component), \code{mu2}, \code{sigma2} (mean and SD of
+the non-informative posterior component). These will be \code{NA_real_} if the
+corresponding posterior component has zero weight (\code{post$w} is 0 or 1).
+\item For binary (\code{mixbeta} format): \code{a1}, \code{b1} (parameters of the
+informative Beta posterior component), \code{a2}, \code{b2} (parameters of the
+non-informative Beta posterior component). These will be \code{NA_real_} if the
+corresponding posterior component has zero weight (\code{post$w} is 0 or 1).
+Returns an error if inputs are invalid or required parameters are missing.
+}
+}
 }
 \description{
-This function calculates the posterior distribution for one-arm trial data with either continuous or binary endpoints, using current and optionally historical data.
-It supports the SAM prior and allows for optional borrowing from historical data.
+This function calculates the posterior distribution for one-arm trial data
+with either continuous or binary endpoints, incorporating current data
+and optionally borrowing from historical data.
+}
+\details{
+It supports the SAM prior (Self-Adaptive Mixture) for automatic conflict
+detection when borrowing is enabled (\code{w = NULL}) and allows specification of
+a fixed mixture weight for the informative component (\code{w} is numeric). A power
+prior mechanism is included via the \code{ess_h} parameter to control the influence
+of historical data.
+}
+\examples{
+# Continuous Endpoint - SAM prior
+current_cont <- list(n = 50, mu_hat = 1.8, s = 0.5)
+historical_cont <- list(n = 100, mu_hat = 1.5, s = 0.4)
+# delta = 0.2 for continuous is on the mean scale
+post_sam_cont <- posterior_distribution(endpoint = "continuous",
+                                        current = current_cont,
+                                        historical = historical_cont,
+                                        delta = 0.2, theta0 = 1.6, s0 = 2)
+str(post_sam_cont)
+
+# Continuous Endpoint - Fixed weight (no SAM), with ESS discounting
+post_fixed_cont_ess <- posterior_distribution(endpoint = "continuous",
+                                             current = current_cont,
+                                             historical = historical_cont,
+                                             w = 0.6, ess_h = 40, # Use ESS=40 for historical
+                                             theta0 = 1.6, s0 = 2)
+str(post_fixed_cont_ess)
+
+# Continuous Endpoint - No historical data (w is ignored)
+post_nocorr_cont <- posterior_distribution(endpoint = "continuous",
+                                           current = current_cont,
+                                           historical = NULL,
+                                           theta0 = 1.6, s0 = 2)
+str(post_nocorr_cont)
+
+# Binary Endpoint - SAM prior
+current_bin <- list(n = 60, count = 45)
+historical_bin <- list(n = 100, count = 60)
+# delta = 0.1 for binary is on the probability scale (0 to 1)
+post_sam_bin <- posterior_distribution(endpoint = "binary",
+                                       current = current_bin,
+                                       historical = historical_bin,
+                                       delta = 0.1, a = 0.5, b = 0.5, # Non-informative Beta(0.5, 0.5)
+                                       a0 = 1, b0 = 1) # Base for informative Beta(1, 1)
+str(post_sam_bin)
+
+# Binary Endpoint - Fixed weight with ESS discounting
+post_fixed_ess_bin <- posterior_distribution(endpoint = "binary",
+                                             current = current_bin,
+                                             historical = historical_bin,
+                                             w = 0.8, ess_h = 30, # Use ESS=30 for historical
+                                             a = 0.5, b = 0.5, a0 = 1, b0 = 1)
+str(post_fixed_ess_bin)
+
+# Binary Endpoint - No borrowing (w=0 explicitly, historical data still checked for structure)
+post_noborrow_bin <- posterior_distribution(endpoint = "binary",
+                                            current = current_bin,
+                                            historical = historical_bin, # Still provide historical if available
+                                            w = 0, a = 0.5, b = 0.5) # Only non-informative prior params needed
+str(post_noborrow_bin)
+
+}
+\seealso{
+\code{\link{posterior_inference}}, \code{\link{posterior_prob}},
+\code{\link[RBesT]{mix}}, \code{\link[RBesT]{mixnorm}}, \code{\link[RBesT]{mixbeta}}
 }

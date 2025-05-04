@@ -1,14 +1,25 @@
 Package: LalondeBayesBorrow
 Type: Package
-Title: What the Package Does (Title Case)
-Version: 0.1.0
+Title: LalondeBayesBorrow: Bayesian Lalonde Framework Simulation
+Version: 1.1.0
 Author: Zhining Sui
 Maintainer: The package maintainer <yourself@somewhere.net>
-Description: More about what it does (maybe more than one line)
-    Use four spaces when indenting paragraphs within the Description.
+Description: Implements the **Bayesian Lalonde framework** for simulating
+    and evaluating go/no-go decision-making strategies in early-stage
+    clinical trials, with a focus on leveraging historical control data.
+    The package supports information borrowing using methods such as the
+    Self-Adaptive Mixture (SAM) prior and power priors. It provides tools
+    for simulating trial data for various endpoint types (continuous, binary,
+    Depth of Response (DpR), g-score), calculating posterior distributions,
+    performing Bayesian inference (estimates, credible intervals, probabilities),
+    evaluating posterior estimation metrics, and computing operating
+    characteristics (OC) for decision rules. This package is designed to assist
+    researchers and statisticians in the design and assessment of Bayesian
+    adaptive trials, particularly at the Phase II/III transition.
 License: GPL-2
 Encoding: UTF-8
 LazyData: true
+Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Imports: dplyr,tidyr,knitr,RBesT,parallel,doParallel,foreach,data.table,stats,rlang
 VignetteBuilder: knitr

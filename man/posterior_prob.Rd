@@ -5,33 +5,81 @@
 \title{Calculate Posterior Probability}
 \usage{
 posterior_prob(
+  range_type = "greater",
   post1,
-  value,
   post2 = NULL,
-  range_type = c("greater", "less", "between"),
+  value,
   value2 = NULL
 )
 }
 \arguments{
-\item{post1}{A RBesT mixture distribution object. Represents the first posterior distribution.}
+\item{range_type}{A character string. Specifies the type of comparison range.
+Must be one of \code{'greater'}, \code{'less'}, or \code{'between'}.
+Defaults to \code{'greater'}.}
 
-\item{value}{A scalar. The threshold or lower bound for the comparison.}
+\item{post1}{An RBesT mixture distribution object (class \code{mix}, \code{mixnorm}, \code{mixbeta}, etc.).
+Represents the first posterior distribution.}
 
-\item{post2}{A RBesT mixture distribution object. Optional second posterior distribution object for pairwise comparison. Default is `NULL`.}
+\item{post2}{An RBesT mixture distribution object (class \code{mix}, \code{mixnorm}, \code{mixbeta}, etc.).
+Optional second posterior distribution object for pairwise comparison of \code{post1 - post2}.
+If \code{NULL} (default), the probability is calculated for \code{post1} itself.}
 
-\item{range_type}{A string. Specifies the type of comparison:
-- "greater": Computes the probability that the posterior or the difference between `post1` and `post2` exceeds `value`.
-- "less": Computes the probability that the posterior or the difference between `post1` and `post2` is less than `value`.
-- "between": Computes the probability that the posterior or the difference between `post1` and `post2` lies between `value` and `value2`.}
+\item{value}{A scalar numeric value. The threshold used for comparison.
+If \code{range_type} is "greater" or "less", this is the single threshold.
+If \code{range_type} is "between", this is the lower bound of the interval.}
 
-\item{value2}{A scalar. The upper bound for the "between" comparison. Required if `range_type` is "between".}
+\item{value2}{A scalar numeric value. The upper bound for the "between" comparison.
+This parameter is required if \code{range_type} is \code{"between"}.}
 }
 \value{
-A scalar. Posterior probability of the point estimate or the difference between estimates falling within the specified range.
+A scalar numeric value representing the calculated posterior probability,
+between 0 and 1. Returns \code{NA} if there is an error during the probability calculation
+(e.g., \code{pmixdiff} fails for two distributions).
 }
 \description{
-This function calculates the posterior probability of a point estimate falling within a specified range.
-If two posterior distributions are provided, it computes the posterior probability of the difference
-between the two distributions falling within the range.
-For a single posterior distribution, it computes the probability of the estimate exceeding, being less than, or falling between specified values.
+This function calculates the posterior probability of a parameter estimate (or the
+difference between two parameter estimates) falling within a specified range,
+based on provided RBesT mixture posterior distributions.
+For a single posterior distribution, it computes the probability of the parameter
+being greater than, less than, or between specified values. For two posterior
+distributions, it computes the probability of the difference between the
+first and second distributions falling within the range.
+}
+\examples{
+# Assuming RBesT is installed and loaded
+library(RBesT) # Load RBesT for example
+# Example 1: Single arm - Probability of being greater than a value
+post_single_norm <- mixnorm(c(0.6, 10, 2), c(0.4, 15, 3))
+prob_greater <- posterior_prob(post1 = post_single_norm, value = 12, range_type = "greater")
+cat("P(post_single_norm > 12):", prob_greater, "\n")
+
+# Example 2: Single arm - Probability of being less than a value
+prob_less <- posterior_prob(post1 = post_single_norm, value = 11, range_type = "less")
+cat("P(post_single_norm < 11):", prob_less, "\n")
+
+# Example 3: Single arm - Probability of being between two values
+prob_between <- posterior_prob(post1 = post_single_norm, value = 11,
+                              range_type = "between", value2 = 14)
+cat("P(11 < post_single_norm < 14):", prob_between, "\n")
+
+# Example 4: Two arms - Probability of difference > 0 (post1 > post2)
+post_ctrl_norm <- mixnorm(c(1, 12, 2.5)) # Control arm posterior
+prob_diff_greater_0 <- posterior_prob(post1 = post_single_norm, post2 = post_ctrl_norm,
+                                     value = 0, range_type = "greater")
+cat("P(post_single_norm - post_ctrl_norm > 0):", prob_diff_greater_0, "\n")
+
+# Example 5: Two arms - Probability of difference < a value
+prob_diff_less_neg1 <- posterior_prob(post1 = post_single_norm, post2 = post_ctrl_norm,
+                                     value = -1, range_type = "less")
+cat("P(post_single_norm - post_ctrl_norm < -1):", prob_diff_less_neg1, "\n")
+
+# Example 6: Two arms - Probability of difference between two values
+prob_diff_between <- posterior_prob(post1 = post_single_norm, post2 = post_ctrl_norm,
+                                   value = -2, range_type = "between", value2 = 1)
+cat("P(-2 < post_single_norm - post_ctrl_norm < 1):", prob_diff_between, "\n")
+
+}
+\seealso{
+\code{\link{posterior_distribution}}, \code{\link{posterior_inference}},
+\code{\link[RBesT]{pmix}}, \code{\link[RBesT]{pmixdiff}}
 }

@@ -13,22 +13,10 @@ param_grid_h <- expand.grid(
   stringsAsFactors = FALSE
 )
 
-data_gen_params_list_h <- lapply(apply(param_grid_h, 1, as.list),
-                                 create_data_gen_params,
-                                 endpoint = "continuous")
-
-data_gen_params_h <- data_gen_params_list_h[[1]]
-control_h <- data_gen_params_h$control_h
-
-n_list <- c(control_h$n)
-mu_list <- c(control_h$mu)
-sigma_list <- c(control_h$sigma)
-arm_names <- c("control_h")
-
 # Define current trial configurations
 param_grid1 <- expand.grid(
-  trt_n = c(20, 30, 40),
-  ctrl_mu = c(-0.4, -0.3, -0.2, -0.1, 0),
+  trt_n = c(20, 30, 40, 50, 60),
+  ctrl_mu = c(-0.4, -0.35, -0.3, -0.25, -0.2, -0.15, -0.1, -0.05, 0),
   trt_sigma = 0.3,
   ctrl_sigma = 0.3,
   stringsAsFactors = FALSE
@@ -37,8 +25,8 @@ param_grid1 <- expand.grid(
          trt_mu = ctrl_mu - 0.1)
 
 param_grid2 <- expand.grid(
-  trt_n = c(20, 30, 40),
-  ctrl_mu = c(-0.4, -0.3, -0.2, -0.1, 0),
+  trt_n = c(20, 30, 40, 50, 60),
+  ctrl_mu = c(-0.4, -0.35, -0.3, -0.25, -0.2, -0.15, -0.1, -0.05, 0),
   trt_sigma = 0.3,
   ctrl_sigma = 0.3,
   stringsAsFactors = FALSE
@@ -47,8 +35,8 @@ param_grid2 <- expand.grid(
          trt_mu = ctrl_mu - 0.15)
 
 param_grid3 <- expand.grid(
-  trt_n = c(20, 30, 40),
-  ctrl_mu = c(-0.4, -0.3, -0.2, -0.1, 0),
+  trt_n = c(20, 30, 40, 50, 60),
+  ctrl_mu = c(-0.4, -0.35, -0.3, -0.25, -0.2, -0.15, -0.1, -0.05, 0),
   trt_sigma = 0.3,
   ctrl_sigma = 0.3,
   stringsAsFactors = FALSE
@@ -56,16 +44,6 @@ param_grid3 <- expand.grid(
   mutate(ctrl_n = trt_n,
          trt_mu = ctrl_mu - 0.2)
 
-
-param_grid4 <- expand.grid(
-  trt_n = c(20, 30, 40),
-  ctrl_mu = c(-0.4, -0.3, -0.2, -0.1, 0),
-  trt_sigma = 0.3,
-  ctrl_sigma = 0.3,
-  stringsAsFactors = FALSE
-) %>%
-  mutate(ctrl_n = trt_n,
-         trt_mu = ctrl_mu)
 
 param_grid <- bind_rows(param_grid1, param_grid2, param_grid3)
 
@@ -75,15 +53,10 @@ data_gen_params_list_h <- lapply(apply(param_grid_h, 1, as.list),
 data_gen_params_list <- lapply(apply(param_grid, 1, as.list),
                                create_data_gen_params, endpoint = "continuous")
 
-# Create parameter lists
-param_grid_h_list <- lapply(apply(param_grid_h, 1, as.list), create_data_gen_params, endpoint = "continuous")
-param_grid_list <- lapply(apply(param_grid, 1, as.list), create_data_gen_params, endpoint = "continuous")
-
-data_gen_params_h <- data_gen_params_list_h[[1]]
-
 ## Run simulations
 nsim = 10000
 bayes_results <- list()
+data_gen_params_h <- data_gen_params_list_h[[1]]
 for (i in seq_along(data_gen_params_list)) {
   start_time_i <- Sys.time()
 
@@ -100,13 +73,12 @@ for (i in seq_along(data_gen_params_list)) {
 
   n_arms <- length(data_gen_params)
   arm_names <- sapply(data_gen_params, function(x) x$name)
-  n_list <- sapply(data_gen_params, function(x) x$n)
-  mu_list <- sapply(data_gen_params, function(x) x$mu)
-  sigma_list <- sapply(data_gen_params, function(x) x$sigma)
+  n_list <- lapply(data_gen_params, function(x) x$n)
+  mu_list <- lapply(data_gen_params, function(x) x$mu)
+  sigma_list <- lapply(data_gen_params, function(x) x$sigma)
 
   # Generate simulation dataset
-  data <- data_gen_continuous(n_arms = n_arms,
-                              arm_names = arm_names,
+  data <- data_gen_continuous(arm_names = arm_names,
                               nsim = nsim, n_list = n_list,
                               mu_list = mu_list, sigma_list = sigma_list)
 
@@ -158,9 +130,9 @@ for (i in seq_along(data_gen_params_list)) {
     post <- bayesian_lalonde_decision(endpoint = "continuous",
                                       data_summary = summary,
                                       prior_params = prior_params,
-                                      arm_names = list(treatment = "treatment",
-                                                       control = "control",
-                                                       control_h = "control_h"),
+                                      arm_names = c(treatment = "treatment",
+                                                    control = "control",
+                                                    control_h = "control_h"),
                                       lrv = -0.1, tv = -0.2,
                                       fgr = 0.2, fsr = 0.1,
                                       posterior_infer = T,
@@ -182,8 +154,8 @@ for (i in seq_along(data_gen_params_list)) {
   cat("Total time for data_gen_params set", i, "=", round(difftime(end_time_i, start_time_i, units = "secs"), 2), "seconds\n\n")
 }
 
-saveRDS(bayes_results, file = "sim_DpR_unconstrained_bayes_results.rds")
-bayes_results <- readRDS(file = "sim_DpR_unconstrained_bayes_results.rds")
+saveRDS(bayes_results, file = "simulations/sim_DpR_unconstrained_bayes_results.rds")
+bayes_results <- readRDS(file = "simulations/sim_DpR_unconstrained_bayes_results.rds")
 
 post_params_all <- data.frame()
 post_est_ci_all <- data.frame()
@@ -231,35 +203,32 @@ post_params_all <- post_params_all  %>%
   ))
 
 post_params_all$control.mean.diff <- post_params_all$control.mu - post_params_all$control_h.mu
+post_params_all$control.mean.diff <- factor(post_params_all$control.mean.diff,
+                                            levels = c("-0.2", "-0.15", "-0.1","-0.05", "0", "0.05", "0.1", "0.15", "0.2"))
 
 post_params_all$borrowing <- factor(post_params_all$borrowing,
                                     levels = c("No", "Yes"),
                                     labels=c("Borrowing: No", "Borrowing: Yes"))
 
-post_params_all$control.mean.diff <- factor(post_params_all$control.mean.diff,
-                                            levels = c("-0.2", "-0.1", "0", "0.1", "0.2"))
-
 post_params_all$control.n <- factor(post_params_all$control.n,
-                                    levels = c("20", "30", "40"),
+                                    levels = c("20", "30", "40", "50", "60"),
                                     labels=c(expression(paste(n, " = 20")),
                                              expression(paste(n, " = 30")),
-                                             expression(paste(n, " = 40"))))
+                                             expression(paste(n, " = 40")),
+                                             expression(paste(n, " = 50")),
+                                             expression(paste(n, " = 60"))))
 
 p1 <- post_params_all %>%
   filter(borrowing == "Borrowing: Yes") %>% # Use filter() for subsetting
   ggplot(aes(x = control.mean.diff, y = control.w_prior)) +
   geom_boxplot(width = 0.6, outlier.size = 0.6, outlier.alpha = 0.5) +
-  annotate("rect", xmin = 1.5, xmax = 4.5,
+  annotate("rect", xmin = 2, xmax = 8,
            ymin = -Inf, ymax = Inf,
-           alpha = 0.2, fill = "blue") +
+           alpha = 0.1, fill = "blue") +
   facet_grid(~control.n,
              labeller = labeller(control.n = label_parsed)) +
-  # Use the actual level values for 'breaks' in scale_x_discrete
-  # This ensures the correct levels are shown and in the right order
-  scale_x_discrete(breaks = levels_order,
-                   labels = levels_order) + # Labels can often be the same as breaks
   labs(x = expression(paste(theta[c], " - ", theta[ch])),
-       y = "Prior weight of borrowing",
+       y = "Prior Weight",
        title = "Prior Weight of Informative Component of SAM Prior") +
   theme_bw() +
   theme(strip.text.x = element_text(size=10))
@@ -267,13 +236,13 @@ p1 <- post_params_all %>%
 p2 <- ggplot(post_params_all %>% subset(borrowing =="Borrowing: Yes" ),
              aes(x = control.mean.diff, y = control.w_post)) +
   geom_boxplot(width = 0.6, outlier.size = 0.6, outlier.alpha = 0.5) +
-  annotate("rect", xmin = 1.5, xmax = 4.5,
+  annotate("rect", xmin = 2, xmax = 8,
            ymin = -Inf, ymax = Inf,
-           alpha = 0.2, fill = "blue") +
+           alpha = 0.1, fill = "blue") +
   facet_grid(~control.n,
              labeller = labeller(control.n = label_parsed)) +
   labs(x = expression(paste(theta[c], " - ", theta[ch])),
-       y = "Posterior weight of borrowing",
+       y = "Posterior Weight",
        title = "Posterior Weight of Informative Component of SAM Prior (CSD = 0.15)") +
   theme_bw() +
   theme(strip.text.x = element_text(size=10))
@@ -281,11 +250,12 @@ p2 <- ggplot(post_params_all %>% subset(borrowing =="Borrowing: Yes" ),
 p1 / p2
 
 ggsave(filename = "simulations/sim_DpR_unconstrained_SAM_weight.jpg", p1 / p2,
-       width = 8, height = 6)
+       width = 13, height = 5)
+
 
 ###
 metrics_post_dist_all <- bayes_results_all$metrics_post_dist_all
-metrics_post_dist_all <- metrics_post_dist_all  %>%
+metrics_post_dist_all <- metrics_post_dist_all %>%
   mutate(across(
     .cols = -c(borrowing, ends_with(".name")),
     .fns = as.numeric
@@ -302,8 +272,8 @@ metrics_post_dist_all$control.mean.diff <- metrics_post_dist_all$control.mu - me
 
 metrics_post_dist_all$true_value.compare_true <- round(metrics_post_dist_all$true_value.compare_true,2)
 metrics_post_dist_all$true_value.compare_true = ifelse(metrics_post_dist_all$true_value.compare_true == -0.20, "-0.2 (TV)",
-                                        ifelse(metrics_post_dist_all$true_value.compare_true == -0.10, "-0.1 (LRV)",
-                                               "-0.15"))
+                                                       ifelse(metrics_post_dist_all$true_value.compare_true == -0.10, "-0.1 (LRV)",
+                                                              "-0.15"))
 
 metrics_post_dist_all$borrowing <- factor(metrics_post_dist_all$borrowing,
                                           levels = c("No", "Yes"),
@@ -318,18 +288,22 @@ metrics_df <- metrics_post_dist_all %>%
   arrange(true_value.compare_true, control.n)
 
 metrics_df$control.mean.diff <- factor(metrics_df$control.mean.diff,
-                                       levels = c("-0.2", "-0.1", "0", "0.1", "0.2"),
+                                       levels = c("-0.2", "-0.15", "-0.1", "-0.05", "0", "0.05", "0.1", "0.15", "0.2"),
                                        labels=c(expression(paste(theta[c], " - ", theta[ch], " = -0.2")),
+                                                expression(paste(theta[c], " - ", theta[ch], " = -0.15")),
                                                 expression(paste(theta[c], " - ", theta[ch], " = -0.1")),
+                                                expression(paste(theta[c], " - ", theta[ch], " = -0.05")),
                                                 expression(paste(theta[c], " - ", theta[ch], " = 0")),
+                                                expression(paste(theta[c], " - ", theta[ch], " = 0.05")),
                                                 expression(paste(theta[c], " - ", theta[ch], " = 0.1")),
+                                                expression(paste(theta[c], " - ", theta[ch], " = 0.15")),
                                                 expression(paste(theta[c], " - ", theta[ch], " = 0.2"))))
 
 metrics_df$true_value.compare_true <- factor(metrics_df$true_value.compare_true,
                                              levels = c("-0.1 (LRV)", "-0.15", "-0.2 (TV)"),
-                                                        labels=c(expression(paste(Delta, " = -0.1")),
-                                                                 expression(paste(Delta, " = -0.15")),
-                                                                 expression(paste(Delta, " = -0.2"))))
+                                             labels=c(expression(paste(Delta, " = -0.1")),
+                                                      expression(paste(Delta, " = -0.15")),
+                                                      expression(paste(Delta, " = -0.2"))))
 
 metrics_df$control.n <- factor(metrics_df$control.n)
 
@@ -340,7 +314,7 @@ p1 <- ggplot(metrics_df,
              labeller = labeller(true_value.compare_true = label_parsed,
                                  control.mean.diff = label_parsed)) +
   geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
-  labs(x = "Sample size per arm", y = "BIAS", color= "") +
+  labs(x = "Sample size per arm", y = "Average Bias", color= "") +
   theme_bw() +
   theme(legend.position = "bottom",
         strip.text = element_text(size = 12),
@@ -356,7 +330,7 @@ p3 <- ggplot(metrics_df,
              labeller = labeller(true_value.compare_true = label_parsed,
                                  control.mean.diff = label_parsed)) +
   geom_hline(yintercept = 0.95, color = "red", linetype = "dashed") +
-  labs(x = "Sample size per arm", y = "CP", color = "") +
+  labs(x = "Sample size per arm", y = "Coverage Probability (%)", color = "") +
   theme_bw() +
   theme(legend.position = "bottom",
         strip.text = element_text(size = 12),
@@ -374,7 +348,7 @@ p2 <- ggplot(metrics_long,
   ggh4x::facet_grid2(true_value.compare_true~control.mean.diff,
                      labeller = labeller(true_value.compare_true = label_parsed,
                                          control.mean.diff = label_parsed)) +
-  labs(x = "Sample size per arm", y = "SD",
+  labs(x = "Sample size per arm", y = "Standard Deviation",
        shape = "",
        color = "") +
   theme_bw() +
@@ -398,7 +372,7 @@ p <- p1 / p2 / p3 +
         legend.box.margin=margin(-5,-5,-5,0),
         plot.tag = element_text(size = 14)
   )
-ggsave(filename = "simulations/sim_DpR_unconstrained_dist_check_metrics.jpg", p, width = 9.5, height = 11.5)
+ggsave(filename = "simulations/sim_DpR_unconstrained_dist_check_metrics_1.jpg", p, width = 15, height = 12)
 
 p <- p1 / p3 +
   plot_layout(guides = "collect") +
@@ -409,11 +383,9 @@ p <- p1 / p3 +
         legend.text = element_text(size = 16),
         legend.title = element_text(size = 15),
         legend.position = "bottom",
-        # legend.margin=margin(0,0,0,0),
-        # legend.box.margin=margin(-5,-5,-5,0),
         plot.tag = element_text(size = 17)
   )
-ggsave(filename = "simulations/sim_DpR_unconstrained_dist_check_metrics_2.jpg", p, width = 9, height = 9)
+ggsave(filename = "simulations/sim_DpR_unconstrained_dist_check_metrics_2.jpg", p, width = 15.5, height = 10)
 
 
 metrics_df <- metrics_post_dist_all %>%
@@ -493,7 +465,7 @@ p_risk <- ggplot(metrics_long,
   geom_point(size = 2) +
   annotate("rect", xmin = -0.15, xmax = 0.15,
            ymin = -Inf, ymax = Inf,
-           alpha = 0.2, fill = "blue") +
+           alpha = 0.1, fill = "blue") +
   facet_grid(borrowing ~ control.n,
              labeller = labeller(
                control.n = function(x) paste("n = ", x))) +
@@ -506,13 +478,11 @@ p_risk <- ggplot(metrics_long,
   theme(legend.position = "bottom",
         legend.title = element_text(size = 13),
         legend.text = element_text(size = 12),
-        legend.margin=margin(0,0,0,0),
-        legend.box.margin=margin(-5,-5,-5,0),
         axis.title = element_text(size = 14),
         axis.text = element_text(size = 12),
         strip.text = element_text(size = 13)
   )
-ggsave("simulations/sim_DpR_unconstrained_conflict_vs_risk.jpg", p_risk, width = 7.5, height = 4)
+ggsave("simulations/sim_DpR_unconstrained_conflict_vs_risk.jpg", p_risk, width = 13, height = 5)
 
 
 oc_new <- data.frame()
@@ -539,12 +509,16 @@ p_list <- list()
 for (i in levels(oc_new$true_value.compare_true)) {
   oc_tmp <- oc_new[oc_new$true_value.compare_true == i, ]
   oc_tmp$control.mean.diff <- factor(oc_tmp$control.mean.diff,
-                                        levels = c("-0.2", "-0.1", "0", "0.1", "0.2"),
-                                        labels=c(expression(paste(theta[c], " - ", theta[ch], " = -0.2")),
-                                                 expression(paste(theta[c], " - ", theta[ch], " = -0.1")),
-                                                 expression(paste(theta[c], " - ", theta[ch], " = 0")),
-                                                 expression(paste(theta[c], " - ", theta[ch], " = 0.1")),
-                                                 expression(paste(theta[c], " - ", theta[ch], " = 0.2"))))
+                                     levels = c("-0.2", "-0.15", "-0.1", "-0.05", "0", "0.05", "0.1", "0.15", "0.2"),
+                                     labels=c(expression(paste(theta[c], " - ", theta[ch], " = -0.2")),
+                                              expression(paste(theta[c], " - ", theta[ch], " = -0.15")),
+                                              expression(paste(theta[c], " - ", theta[ch], " = -0.1")),
+                                              expression(paste(theta[c], " - ", theta[ch], " = -0.05")),
+                                              expression(paste(theta[c], " - ", theta[ch], " = 0")),
+                                              expression(paste(theta[c], " - ", theta[ch], " = 0.05")),
+                                              expression(paste(theta[c], " - ", theta[ch], " = 0.1")),
+                                              expression(paste(theta[c], " - ", theta[ch], " = 0.15")),
+                                              expression(paste(theta[c], " - ", theta[ch], " = 0.2"))))
   p_list[[i]] <- ggplot(oc_tmp,
                         aes(x = as.factor(control.n), y = proportion_pr, fill = decision_pr)) +
     geom_bar(stat = "identity", width = 1) +
@@ -576,7 +550,8 @@ p_oc <- p_list[[1]] + p_list[[2]] + p_list[[3]] +
         axis.title = element_text(size = 13),
         axis.text = element_text(size = 12),
         strip.text = element_text(size = 13))
-ggsave("simulations/sim_DpR_unconstrained_zone_size.jpg", p_oc, width = 14, height = 8)
+
+ggsave("simulations/sim_DpR_unconstrained_zone_size.jpg", p_oc, width = 14, height = 14)
 
 oc2 <- oc_new %>%
   select(control.mean.diff, control.n, true_value.compare_true, borrowing, decision_pr, proportion_pr) %>%
@@ -600,7 +575,6 @@ oc2 <- oc_new %>%
 # oc2$`go_Borrowing: Yes` = cell_spec(oc2$`go_Borrowing: Yes`,
 #                                     background = ifelse(oc2$true_value.compare_true == "-0.1 (LRV)", "pink", "white"))
 
-
 kbl(oc2[,-1], escape = T, row.names = F, digits = 3,
     format    = "latex",
     booktabs  = T,
@@ -613,6 +587,12 @@ kbl(oc2[,-1], escape = T, row.names = F, digits = 3,
                       "Case 3:" = 9,
                       "Case 4:" = 9,
                       "Case 5:" = 9))
+
+
+
+
+
+
 
 
 

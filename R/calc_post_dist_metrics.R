@@ -4,18 +4,26 @@
 #' This function calculates various evaluation metrics for the posterior distribution, including the average bias, standard error, empirical standard deviation, and nominal coverage probability.
 #' For the "g-score" endpoint, it calculates the log-median ratio, and for the "OR" endpoint, it calculates the rate difference.
 #'
-#' @param endpoint A string. Specifies the type of endpoint ("g-score" or "OR").
-#' @param true_value A scalar. The true median ratio for the "g-score" endpoint or the true rate difference for the "OR" endpoint.
-#' @param post_est_ci A data frame. Contains posterior inference obtained from `bayesian_lalonde_decision()`, including posterior estimates, standard errors, and 95\% credible intervals for each simulation repetition.
-#' @param remove.na
+#' @details
+#' For the `"g-score"` endpoint, it calculates the log-median ratio, and for the `"OR"` endpoint, it calculates the rate difference.
+#' - Average bias
+#' - Standard error
+#' - Empirical standard deviation
+#' - Nominal coverage probability
+#'
+#' @param endpoint A string. Specifies the type of endpoint (`"g-score"` or `"OR"` or `"continuous"`).
+#' @param true_value A scalar. The true median ratio for the `"g-score"` endpoint, the true rate difference for the `"OR"` endpoint, or the true mean difference for the `"continuous"` endpoint.
+#' @param post_est_ci A data frame. Contains posterior inference obtained from `bayesian_lalonde_decision()`, including posterior estimates, standard errors, and 95% credible intervals for each simulation repetition.
+#' @param remove.na Logical. Whether to remove NA values before calculation. Defaults to `FALSE`.
 #'
 #' @return A data frame containing the evaluation metrics for the posterior distribution, including:
-#'   - `bias_avg`: The average bias of the estimate.
-#'   - `sd_avg`: The average standard error of the estimate.
-#'   - `sd_empirical`: The empirical standard deviation of the estimate.
-#'   - `cp`: The nominal coverage probability (95\%).
-#'   - Additional metrics specific to the "g-score" endpoint. More details can be found in `eval_gscore_approx_dist()`.
+#'   * `bias_avg`: The average bias of the estimate (specific column names like `bias_avg_median_ratio1`, `bias_avg_median_ratio2`, `bias_avg_rate_diff`, `bias_avg_mean_diff` depend on the endpoint).
+#'   * `sd_avg`: The average standard error of the estimate (`sd_compare`).
+#'   * `sd_empirical`: The empirical standard deviation of the estimate (`est_compare`).
+#'   * `cp`: The nominal coverage probability (95%).
+#'   * Additional metrics specific to the `"g-score"` endpoint (see `eval_gscore_approx_dist()`).
 #' @export
+#' @seealso `bayesian_lalonde_decision`, `eval_gscore_approx_dist`
 calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci, remove.na = FALSE) {
   if (endpoint == "g-score") {
 

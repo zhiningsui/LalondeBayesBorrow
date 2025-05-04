@@ -7,16 +7,19 @@
 eval_gscore_approx_dist(sim_data)
 }
 \arguments{
-\item{sim_data}{A data frame. Data simulated by the `data_gen_gscore()` function.}
+\item{sim_data}{A data frame. Data simulated by the \code{data_gen_gscore()} function.}
 }
 \value{
 A data frame containing evaluation metrics for the g-score median ratio:
-  - bias_avg: Average bias of the log-median ratio estimates.
-  - bias_avg_median_ratio1: Average bias of the median ratio, obtained by exponentiating the average of log median ratio estimates and subtracting the true median ratio
-  - bias_avg_median_ratio2: Average bias of the median ratio, obtained by exponentiating the log median estimates for both arms to obtain the median ratio estimates for each repetition and taking the average bias over all repetitions of simulation
-  - sd_avg: Average standard error of the log-median ratio estimates.
-  - sd_empirical: Empirical standard deviation of the log-median ratio estimates.
-  - cp: Coverage probability for the 95% confidence interval.
+\itemize{
+\item \code{log_delta}: The true log-median ratio (\code{log(theta_t / theta_c)}).
+\item \code{bias_avg}: Average bias of the log-median ratio estimates (\code{log_delta_hat}).
+\item \code{bias_avg_median_ratio1}: Average bias of the median ratio, obtained by exponentiating the average of log median ratio estimates and subtracting the true median ratio.
+\item \code{bias_avg_median_ratio2}: Average bias of the median ratio, obtained by exponentiating the log median estimates for both arms to obtain the median ratio estimates for each repetition and taking the average bias over all repetitions of simulation.
+\item \code{sd_avg}: Average standard error of the log-median ratio estimates.
+\item \code{sd_empirical}: Empirical standard deviation of the log-median ratio estimates.
+\item \code{cp}: Coverage probability for the 95\% confidence interval.
+}
 }
 \description{
 This function evaluates the reliability of the normal approximation for g-score median estimates.
@@ -35,4 +38,7 @@ sim_data <- data_gen_gscore(n_arms = 2, nsim = 10, n_list = n_list,
 
 eval_gscore_approx_dist(sim_data = sim_data)
 
+}
+\seealso{
+\code{data_gen_gscore}, \code{calc_post_dist_metrics}
 }

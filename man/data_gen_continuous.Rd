@@ -10,31 +10,83 @@ data_gen_continuous(
   mu_list,
   sigma_list,
   arm_names,
-  n_arms = length(arm_names)
+  seed = NULL
 )
 }
 \arguments{
-\item{nsim}{Number of simulations}
+\item{nsim}{A single positive integer. Number of simulations to run.}
 
-\item{n_list}{Named list of sample sizes per arm (names should match arm_names). Must contain positive integers.}
+\item{n_list}{A named list of positive integers. Sample sizes for each arm.
+Names must exactly match \code{arm_names}.}
 
-\item{mu_list}{Named list of means per arm (names should match arm_names). Must contain numeric values.}
+\item{mu_list}{A named list of numeric values. True means for the Normal
+distribution for each arm. Names must exactly match \code{arm_names}.}
 
-\item{sigma_list}{Named list of standard deviations per arm (names should match arm_names). Must contain non-negative numeric values.}
+\item{sigma_list}{A named list of non-negative numeric values. True standard
+deviations for the Normal distribution for each arm. Names must exactly
+match \code{arm_names}.}
 
-\item{arm_names}{Character vector of arm names.}
+\item{arm_names}{A character vector. Names of the arms in the simulation. Used
+for naming outputs and matching list elements.}
 
-\item{n_arms}{Number of arms (optional, inferred from arm_names if not provided).}
+\item{seed}{An integer or \code{NULL}. If an integer, a seed is set for
+reproducibility of the random number generation across parallel workers.
+Defaults to \code{NULL}, which means no explicit seed is set beyond R's default behavior.}
 }
 \value{
 A list containing:
 \itemize{
-  \item \code{data}: A data.table with columns nsim, id, arm, value, containing all simulated continuous values.
-  \item \code{summary}: A data.table with columns nsim and arm-specific summary statistics (n, mu_hat, sd, s).
-  \item \code{true_value}: A data frame with true mean values per arm and potentially a true mean difference (treatment - control).
+\item \code{data}: A \code{data.table} with columns \code{nsim} (simulation replicate ID),
+\code{id} (patient ID within the replicate and arm), \code{arm} (arm name),
+\code{value} (simulated continuous outcome). Contains all individual simulated values.
+\item \code{summary}: A \code{data.table} with columns \code{nsim} and arm-specific summary
+statistics calculated from the simulated data for each arm and simulation
+replicate. Columns are in wide format, named \verb{[arm_name].n}, \verb{[arm_name].mu_hat}
+(sample mean), \verb{[arm_name].sd} (sample standard deviation), and \verb{[arm_name].s}
+(sample standard error of the mean, \code{sd/sqrt(n)}).
+\item \code{true_value}: A \code{data.frame} with the true input mean values per arm
+(columns \verb{[arm_name].mean_true}) and a true mean difference between 'treatment'
+and 'control' arms if both exist (column \code{compare_true}).
 }
 }
 \description{
 Generates continuous outcome data by sampling from Normal distributions for each arm
-in each simulation replicate.
+in each simulation replicate. It produces both the individual-level data and
+arm-specific summary statistics (sample size, mean, standard deviation, standard error).
+The function supports parallel processing for faster execution across simulations
+and includes options for reproducibility via setting a random seed.
+}
+\examples{
+# Example 1: Generate data for 2 arms over 5 simulations
+n_list <- list(treatment = 50, control = 60)
+mu_list <- list(treatment = 10, control = 8)
+sigma_list <- list(treatment = 3, control = 3.5)
+arm_names <- c("treatment", "control")
+
+sim_data <- data_gen_continuous(nsim = 5, n_list, mu_list, sigma_list, arm_names)
+
+# Display structure of results
+str(sim_data)
+
+# Display first few rows of individual data
+print(head(sim_data$data))
+
+# Display the summary data
+print(sim_data$summary)
+
+# Display the true values
+print(sim_data$true_value)
+
+# Example 2: Generate data with a seed for reproducibility
+sim_data_reproducible <- data_gen_continuous(nsim = 3, n_list, mu_list,
+                                            sigma_list, arm_names, seed = 123)
+print(sim_data_reproducible$summary) # Note the summary values
+
+sim_data_reproducible_again <- data_gen_continuous(nsim = 3, n_list, mu_list,
+                                                 sigma_list, arm_names, seed = 123)
+print(sim_data_reproducible_again$summary) # Values should match the previous run
+
+}
+\seealso{
+\code{\link{bayesian_lalonde_decision}}
 }

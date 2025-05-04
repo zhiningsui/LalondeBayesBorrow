@@ -24,11 +24,14 @@ data_gen_DpR(n_arms, nsim, n_list, p_list, arm_names, mu_list, sigma_list)
 \value{
 A list containing:
 \itemize{
-  \item \code{data}: A data.table with columns nsim, id, arm, value, containing all simulated DpR values.
-  \item \code{summary}: A data.table with columns nsim and arm-specific summary statistics (n, mu_hat, sd, s).
-  \item \code{true_value}: A data frame with true mean differences (currently only 'treatment' vs 'control').
+\item \code{data}: A data.table with columns \code{nsim}, \code{id}, \code{arm}, \code{value}, containing all simulated DpR values.
+\item \code{summary}: A data.table with columns \code{nsim} and arm-specific summary statistics (n, mu_hat, sd, s).
+\item \code{true_value}: A data frame with true mean differences (currently only 'treatment' vs 'control').
 }
 }
 \description{
 Generate Constrained Depth of Response (DpR) data for multiple arms across multiple simulations
+}
+\seealso{
+\code{bayesian_lalonde_decision}
 }

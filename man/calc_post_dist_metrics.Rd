@@ -7,23 +7,37 @@
 calc_post_dist_metrics(endpoint, true_value, post_est_ci, remove.na = FALSE)
 }
 \arguments{
-\item{endpoint}{A string. Specifies the type of endpoint ("g-score" or "OR").}
+\item{endpoint}{A string. Specifies the type of endpoint (\code{"g-score"} or \code{"OR"} or \code{"continuous"}).}
 
-\item{true_value}{A scalar. The true median ratio for the "g-score" endpoint or the true rate difference for the "OR" endpoint.}
+\item{true_value}{A scalar. The true median ratio for the \code{"g-score"} endpoint, the true rate difference for the \code{"OR"} endpoint, or the true mean difference for the \code{"continuous"} endpoint.}
 
-\item{post_est_ci}{A data frame. Contains posterior inference obtained from `bayesian_lalonde_decision()`, including posterior estimates, standard errors, and 95\% credible intervals for each simulation repetition.}
+\item{post_est_ci}{A data frame. Contains posterior inference obtained from \code{bayesian_lalonde_decision()}, including posterior estimates, standard errors, and 95\% credible intervals for each simulation repetition.}
 
-\item{remove.na}{}
+\item{remove.na}{Logical. Whether to remove NA values before calculation. Defaults to \code{FALSE}.}
 }
 \value{
 A data frame containing the evaluation metrics for the posterior distribution, including:
-  - `bias_avg`: The average bias of the estimate.
-  - `sd_avg`: The average standard error of the estimate.
-  - `sd_empirical`: The empirical standard deviation of the estimate.
-  - `cp`: The nominal coverage probability (95\%).
-  - Additional metrics specific to the "g-score" endpoint. More details can be found in `eval_gscore_approx_dist()`.
+\itemize{
+\item \code{bias_avg}: The average bias of the estimate (specific column names like \code{bias_avg_median_ratio1}, \code{bias_avg_median_ratio2}, \code{bias_avg_rate_diff}, \code{bias_avg_mean_diff} depend on the endpoint).
+\item \code{sd_avg}: The average standard error of the estimate (\code{sd_compare}).
+\item \code{sd_empirical}: The empirical standard deviation of the estimate (\code{est_compare}).
+\item \code{cp}: The nominal coverage probability (95\%).
+\item Additional metrics specific to the \code{"g-score"} endpoint (see \code{eval_gscore_approx_dist()}).
+}
 }
 \description{
 This function calculates various evaluation metrics for the posterior distribution, including the average bias, standard error, empirical standard deviation, and nominal coverage probability.
 For the "g-score" endpoint, it calculates the log-median ratio, and for the "OR" endpoint, it calculates the rate difference.
+}
+\details{
+For the \code{"g-score"} endpoint, it calculates the log-median ratio, and for the \code{"OR"} endpoint, it calculates the rate difference.
+\itemize{
+\item Average bias
+\item Standard error
+\item Empirical standard deviation
+\item Nominal coverage probability
+}
+}
+\seealso{
+\code{bayesian_lalonde_decision}, \code{eval_gscore_approx_dist}
 }

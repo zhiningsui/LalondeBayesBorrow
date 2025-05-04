@@ -78,12 +78,13 @@ sd_gscore_median <- function(x) {
 #' @param sim_data A data frame. Data simulated by the `data_gen_gscore()` function.
 #'
 #' @return A data frame containing evaluation metrics for the g-score median ratio:
-#'   - bias_avg: Average bias of the log-median ratio estimates.
-#'   - bias_avg_median_ratio1: Average bias of the median ratio, obtained by exponentiating the average of log median ratio estimates and subtracting the true median ratio
-#'   - bias_avg_median_ratio2: Average bias of the median ratio, obtained by exponentiating the log median estimates for both arms to obtain the median ratio estimates for each repetition and taking the average bias over all repetitions of simulation
-#'   - sd_avg: Average standard error of the log-median ratio estimates.
-#'   - sd_empirical: Empirical standard deviation of the log-median ratio estimates.
-#'   - cp: Coverage probability for the 95% confidence interval.
+#'   * `log_delta`: The true log-median ratio (`log(theta_t / theta_c)`).
+#'   * `bias_avg`: Average bias of the log-median ratio estimates (`log_delta_hat`).
+#'   * `bias_avg_median_ratio1`: Average bias of the median ratio, obtained by exponentiating the average of log median ratio estimates and subtracting the true median ratio.
+#'   * `bias_avg_median_ratio2`: Average bias of the median ratio, obtained by exponentiating the log median estimates for both arms to obtain the median ratio estimates for each repetition and taking the average bias over all repetitions of simulation.
+#'   * `sd_avg`: Average standard error of the log-median ratio estimates.
+#'   * `sd_empirical`: Empirical standard deviation of the log-median ratio estimates.
+#'   * `cp`: Coverage probability for the 95% confidence interval.
 #' @export
 #'
 #' @examples
@@ -102,6 +103,7 @@ sd_gscore_median <- function(x) {
 #' @import dplyr
 #' @import tidyr
 #' @importFrom rlang .data
+#' @seealso `data_gen_gscore`, `calc_post_dist_metrics`
 eval_gscore_approx_dist <- function(sim_data){
 
   # True median ratio: delta = theta_t / theta_c

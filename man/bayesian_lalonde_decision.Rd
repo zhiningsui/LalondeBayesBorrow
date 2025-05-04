@@ -2,7 +2,7 @@
 % Please edit documentation in R/bayesian_lalonde_decision.R
 \name{bayesian_lalonde_decision}
 \alias{bayesian_lalonde_decision}
-\title{Bayesian Lalonde Decision Framework}
+\title{Bayesian Decision Framework based on Lalonde Criteria}
 \usage{
 bayesian_lalonde_decision(
   endpoint,
@@ -19,35 +19,100 @@ bayesian_lalonde_decision(
 )
 }
 \arguments{
-\item{endpoint}{A string. Type of endpoint ("continuous" or "binary").}
+\item{endpoint}{A character string. The type of endpoint. Must be \code{'continuous'} or \code{'binary'}.
+This determines the likelihood and prior structure used by \code{posterior_distribution}.}
 
-\item{data_summary}{A data frame. Summary of the individual-level data. For continuous endpoints, each row represents the number of patients, the mean of the normal distribution, and the standard deviation of the normal distribution for one arm in one simulation repetition. For binary endpoints, each row represents the number of patients and the number of responses for one arm in one repetition of the simulation.}
+\item{data_summary}{A data frame. Contains summarized data for each arm for each
+simulation repetition. Must include an \code{nsim} column identifying the simulation
+repetition number. Data for each arm and its parameters should be in columns
+prefixed by the arm name and a dot (e.g., \code{control.n}, \code{treatment.mu_hat},
+\code{control_h.count}).
+\itemize{
+\item For \code{'continuous'} endpoint, required columns per arm (e.g., \code{control.})
+are \code{n} (sample size), \code{mu_hat} (sample mean), \code{s} (standard deviation of sample mean).
+\item For \code{'binary'} endpoint, required columns per arm (e.g., \code{control.})
+are \code{n} (sample size), \code{count} (number of responses/events).
+Historical arm data (e.g., \code{control_h.n}, \code{treatment_h.count}) are optional.
+}}
 
-\item{prior_params}{A list. Prior distribution parameters for both the treatment and control arms. It should include delta, w, a, and b values for both arms.}
+\item{prior_params}{A named list. Contains prior distribution and borrowing
+parameters for each arm (treatment and control, potentially historical).
+Names must follow the convention \verb{[arm_name].[parameter]}, matching the
+parameters expected by \code{posterior_distribution}.
+\itemize{
+\item For \code{'continuous'} arms, includes \verb{[arm_name].theta0}, \verb{[arm_name].s0}.
+\item For \code{'binary'} arms, includes \verb{[arm_name].a}, \verb{[arm_name].b}, \verb{[arm_name].a0}, \verb{[arm_name].b0}.
+\item For arms with potential historical borrowing, includes \verb{[arm_name].delta}, \verb{[arm_name].w}, \verb{[arm_name].ess_h}.
+Example names: \code{treatment.delta}, \code{control.w}, \code{treatment.theta0}, \code{control.s0},
+\code{treatment.a}, \code{control.b}, \code{treatment.a0}, \code{control.b0}, \code{control.ess_h}.
+}}
 
-\item{lrv}{A scalar. The lower reference value for decision-making.}
+\item{lrv}{A scalar numeric value. The Lower Reference Value for the comparison
+metric (difference or ratio). Used in the Lalonde decision criteria.}
 
-\item{tv}{A scalar. The target value for decision-making.}
+\item{tv}{A scalar numeric value. The Target Value for the comparison metric.
+Used in the Lalonde decision criteria.}
 
-\item{fgr}{A scalar. False go rate for decision-making.}
+\item{fgr}{A scalar numeric value between 0 and 1. The False Go Rate. Used in the
+Lalonde probability and quantile-based decision criteria.}
 
-\item{fsr}{A scalar. False stop rate for decision-making.}
+\item{fsr}{A scalar numeric value between 0 and 1. The False Stop Rate. Used in the
+Lalonde probability and quantile-based decision criteria.}
 
-\item{arm_names}{A list. Names of the arms in the simulation (e.g., treatment, control, etc.).}
+\item{arm_names}{A character vector. A list of arm names present in the simulation.
+This parameter is used internally to identify which arm data columns to look for
+in \code{data_summary} and which prior parameters to expect in \code{prior_params}.
+Expected names are typically \code{"treatment"}, \code{"control"}, \code{"treatment_h"}, \code{"control_h"}.}
 
-\item{posterior_infer}{A logical. If TRUE, the function computes posterior inference for credible intervals and posterior probabilities.}
+\item{posterior_infer}{A logical value. If \code{TRUE}, compute posterior inference statistics
+(95\% credible intervals and posterior probabilities \code{pr_m}, \code{pr_l}, \code{pr_t}). Defaults to \code{TRUE}.}
 
-\item{Lalonde_decision}{A logical. If TRUE, the function makes decisions based on the Lalonde framework.}
+\item{Lalonde_decision}{A logical value. If \code{TRUE}, apply the Lalonde decision rules
+based on the calculated posterior probabilities and quantiles. Defaults to \code{TRUE}.
+Note: Requires \code{posterior_infer = TRUE} to make decisions.}
 
-\item{EXP_TRANSFORM}{A logical. If TRUE, the function exponentiates the results, which is useful for log-transformed data.}
+\item{EXP_TRANSFORM}{A logical value. If \code{TRUE}, results for individual arm means,
+credible intervals, and the comparison estimate (\code{est_compare}) are exponentiated.
+This implies that the underlying parameters in \code{post_t_mix} and \code{post_c_mix}
+(and hence \code{mu_hat}, \code{mu} in \code{data_summary} and \code{prior_params}) are on a log scale,
+and the comparison is interpreted as a ratio. Defaults to \code{FALSE}.}
 }
 \value{
-A list. The output includes:
-  - `post_params`: A data frame containing the posterior distribution parameters for each arm.
-  - `post_est_ci`: A data frame containing evaluating metrics for the posterior distribution.
-  - `post_inference`: A data frame containing the posterior probabilities and credible interval, and the decisions based on the Lalonde framework.
+A list containing three data frames, each row corresponding to a simulation
+repetition (\code{nsim}):
+\itemize{
+\item \code{post_params}: Contains the raw posterior parameters (e.g., \code{w_post}, \code{mu1_post}, \code{sigma1_post}, etc.)
+for the treatment and control arms, prefixed with \code{treatment.} or \code{control.},
+and the prior weights (\code{treatment.w_prior}, \code{control.w_prior}).
+\item \code{post_est_ci}: Contains standard posterior inference (mean, SD, 95\% CI)
+for each arm and their comparison, postfixed with \verb{_95ci}. Values are
+exponentiated if \code{EXP_TRANSFORM = TRUE} (except SDs).
+\item \code{post_inference}: Contains inference results relevant to the Lalonde
+decision framework. Includes posterior probabilities (\code{pr_m}, \code{pr_l}, \code{pr_t})
+and comparison quantiles derived from \code{fgr}/\code{fsr} (\verb{_lalonde}). If
+\code{Lalonde_decision = TRUE} and \code{posterior_infer = TRUE}, includes decision
+columns (\code{decision_pr}, \code{decision_ci}).
+}
 }
 \description{
-This function implements a Bayesian decision-making framework based on the Lalonde criteria.
-It calculates posterior distributions for each arm and evaluates posterior inference and decision criteria based on the given endpoint type (continuous or binary).
+This function simulates a Bayesian trial across multiple scenarios (simulations),
+calculating posterior distributions for treatment and control arms (with optional
+historical borrowing), performing Bayesian inference (estimates, credible
+intervals, posterior probabilities), and applying decision rules based on
+the Lalonde framework.
+}
+\details{
+It leverages \code{posterior_distribution} to calculate individual arm posteriors,
+\code{posterior_inference} to summarize these posteriors and their difference/ratio,
+and \code{posterior_prob} to calculate probabilities against thresholds.
+
+The function is designed to work with data summarized per arm per simulation
+repetition, typically the output of a data generation step. Parallel processing
+is used to speed up calculations across simulations.
+}
+\seealso{
+\code{posterior_distribution}, \code{posterior_inference},
+\code{posterior_prob}, \code{convert_RBesT_mix},
+\code{RBesT::mix}, \code{RBesT::mixnorm}, \code{RBesT::mixbeta},
+\code{RBesT::pmixdiff}, \code{RBesT::qmixdiff}
 }

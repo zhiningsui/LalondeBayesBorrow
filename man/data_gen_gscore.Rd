@@ -31,13 +31,18 @@ data_gen_gscore(
 }
 \value{
 A list of data frames:
-  - \code{data}: A data frame containing individual-level g-scores for all arms and all repetitions of the simulation.
-  - \code{true_value}: A data frame with the true medians for all arms and the true median ratio for treatment vs. control (if both are present).
-  - \code{median_est}: A data frame with adjusted median estimates for each arm, along with the variance estimators for the median estimates.
+\itemize{
+\item \code{data}: A data frame containing individual-level g-scores for all arms and all repetitions of the simulation.
+\item \code{true_value}: A data frame with the true medians for all arms and the true median ratio for treatment vs. control (if both are present).
+\item \code{median_est}: A data frame with adjusted median estimates for each arm, along with the variance estimators for the median estimates.
+}
 }
 \description{
 This function generates g-scores for multiple arms of a study across multiple simulation repetitions.
 It simulates individual-level g-scores for each arm based on specified probabilities, means,
 and standard deviations for the g-score distributions. The function outputs true median values
 and adjusted median estimates along with their variance.
+}
+\seealso{
+\code{bayesian_lalonde_decision} # Add seealso if it feeds into the main function
 }

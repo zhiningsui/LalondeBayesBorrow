@@ -20,7 +20,7 @@ A vector. Simulated g-scores.
 }
 \description{
 This function generates g-scores by simulating positive values from a log-normal distribution, with added zero inflation.
-The probability of a g-score being zero is controlled by `prob_zero`, while positive values are generated as log-normal.
+The probability of a g-score being zero is controlled by \code{prob_zero}, while positive values are generated as log-normal.
 }
 \details{
 P(G=0) = p, P(G>0) = 1-p;

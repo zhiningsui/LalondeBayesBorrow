@@ -7,14 +7,14 @@
 obtain_oc(decisions)
 }
 \arguments{
-\item{decisions}{A data frame. Contains the decisions made in each simulation or trial, with columns for posterior probability-based decisions (`decision_pr`) and credible interval-based decisions (`decision_ci`).}
-
-\item{settings}{A data frame. Contains the settings or parameters used in the simulations or trials.}
+\item{decisions}{A data frame. Contains the decisions made in each simulation or trial, with columns for posterior probability-based decisions (\code{decision_pr}) and credible interval-based decisions (\code{decision_ci}).}
 }
 \value{
 A data frame that includes the original settings along with the calculated proportions of decisions based on the posterior probability and credible interval. The output includes:
-  - `proportion_pr`: Proportion of decisions made based on the posterior probability.
-  - `proportion_ci`: Proportion of decisions made based on the credible interval.
+\itemize{
+\item \code{proportion_pr}: Proportion of decisions made based on the posterior probability.
+\item \code{proportion_ci}: Proportion of decisions made based on the credible interval.
+}
 }
 \description{
 This function calculates the operating characteristics (OC) by computing the proportion of decisions made based on the posterior probability and the credible interval from a set of decision results.

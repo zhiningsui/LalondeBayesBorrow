@@ -7,31 +7,81 @@
 posterior_inference(post1, post2 = NULL, quantiles, EXP_TRANSFORM = FALSE)
 }
 \arguments{
-\item{post1}{A RBesT mixture distribution object. The first posterior distribution (e.g., for the treatment arm).}
+\item{post1}{An RBesT mixture distribution object (class \code{mix}, \code{mixnorm}, \code{mixbeta}, etc.).
+Represents the posterior distribution for the first entity (e.g., treatment arm).}
 
-\item{post2}{A RBesT mixture distribution object. The second posterior distribution (e.g., for the control arm). Default is `NULL`, in which case only posterior estimates for `post1` are calculated.}
+\item{post2}{An RBesT mixture distribution object (class \code{mix}, \code{mixnorm}, \code{mixbeta}, etc.), or \code{NULL}.
+Represents the posterior distribution for the second entity (e.g., control arm).
+If \code{NULL} (default), inference is performed only for \code{post1}.}
 
-\item{quantiles}{A vector. The upper and lower quantiles for the credible interval (e.g., `c(0.025, 0.975)` for a 95\% credible interval).}
+\item{quantiles}{A numeric vector of length 2 specifying the lower and upper
+quantiles for the credible interval (e.g., \code{c(0.025, 0.975)} for a 95\% credible interval).
+Must be sorted and within (0, 1).}
 
-\item{EXP_TRANSFORM}{A logical. If TRUE, the function exponentiates the results, which is useful for log-transformed data.}
+\item{EXP_TRANSFORM}{A logical value. If \code{TRUE}, the calculated mean, credible interval bounds,
+and the comparison estimate are exponentiated (\code{exp(x)}). This is typically
+used when the mixture distribution models a parameter on the log scale (e.g., log-mean, log-odds).
+Note that the standard deviation (\code{sd1}, \code{sd2}, \code{sd_compare}) is always calculated
+on the original scale of the input mixture distributions.}
 }
 \value{
-A data frame with one row containing:
-  - \code{est1}: Posterior mean for the first posterior distribution (e.g., treatment arm).
-  - \code{sd1}: Posterior standard deviation for the first posterior distribution.
-  - \code{ci1_l}: Lower bound of the credible interval for the first posterior distribution.
-  - \code{ci1_u}: Upper bound of the credible interval for the first posterior distribution.
-  - \code{est2}: Posterior mean for the second posterior distribution (if provided).
-  - \code{sd2}: Posterior standard deviation for the second posterior distribution (if provided).
-  - \code{ci2_l}: Lower bound of the credible interval for the second posterior distribution (if provided).
-  - \code{ci2_u}: Upper bound of the credible interval for the second posterior distribution (if provided).
-  - \code{est_compare}: Estimated treatment effect, either as a difference (for continuous data) or a ratio (for log-transformed data if `EXP_TRANSFORM = TRUE`).
-  - \code{sd_compare}: Standard deviation of the estimated treatment effect.
-  - \code{compare_ci_l}: Lower bound of the credible interval for the treatment effect.
-  - \code{compare_ci_u}: Upper bound of the credible interval for the treatment effect.
+A data frame with exactly one row. Contains the following columns:
+\itemize{
+\item \code{est1}: Posterior mean for \code{post1}. Exponentiated if \code{EXP_TRANSFORM = TRUE}.
+\item \code{sd1}: Posterior standard deviation for \code{post1}. Always on the original scale of \code{post1}.
+\item \code{ci1_l}: Lower bound of the credible interval for \code{post1}. Exponentiated if \code{EXP_TRANSFORM = TRUE}.
+\item \code{ci1_u}: Upper bound of the credible interval for \code{post1}. Exponentiated if \code{EXP_TRANSFORM = TRUE}.
+\item \code{est2}: Posterior mean for \code{post2} (if \code{post2} is not \code{NULL}). Exponentiated if \code{EXP_TRANSFORM = TRUE}. \code{NA} if \code{post2} is \code{NULL}.
+\item \code{sd2}: Posterior standard deviation for \code{post2} (if \code{post2} is not \code{NULL}). Always on the original scale of \code{post2}. \code{NA} if \code{post2} is \code{NULL}.
+\item \code{ci2_l}: Lower bound of the credible interval for \code{post2} (if \code{post2} is not \code{NULL}). Exponentiated if \code{EXP_TRANSFORM = TRUE}. \code{NA} if \code{post2} is \code{NULL}.
+\item \code{ci2_u}: Upper bound of the credible interval for \code{post2} (if \code{post2} is not \code{NULL}). Exponentiated if \code{EXP_TRANSFORM = TRUE}. \code{NA} if \code{post2} is \code{NULL}.
+\item \code{est_compare}: Estimated treatment effect. If \code{EXP_TRANSFORM = FALSE}, this is \code{est1 - est2} (difference of means/parameters). If \code{EXP_TRANSFORM = TRUE}, this is \code{exp(est1) / exp(est2)} (ratio of exponentiated means/parameters). \code{NA} if \code{post2} is \code{NULL}.
+\item \code{sd_compare}: Standard deviation of the \emph{difference} (\code{post1 - post2}) on the original scale. Calculated as \code{sqrt(sd1^2 + sd2^2)}, assuming independence. This is \emph{not} the standard deviation of the ratio if \code{EXP_TRANSFORM = TRUE}. \code{NA} if \code{post2} is \code{NULL}.
+\item \code{compare_ci_l}: Lower bound of the credible interval for the treatment effect (\code{post1 - post2}). Exponentiated if \code{EXP_TRANSFORM = TRUE}. \code{NA} if \code{post2} is \code{NULL}.
+\item \code{compare_ci_u}: Upper bound of the credible interval for the treatment effect (\code{post1 - post2}). Exponentiated if \code{EXP_TRANSFORM = TRUE}. \code{NA} if \code{post2} is \code{NULL}.
+}
 }
 \description{
-This function calculates posterior estimates, standard deviations, and credible intervals for individual arms and the treatment effect, based on posterior distributions from the RBesT package.
-If a second posterior distribution is not provided, it calculates these statistics for a single arm.
-The function also supports exponentiating the results, which can be useful for endpoints like log-transformed data.
+This function calculates key summary statistics (posterior mean, standard deviation,
+and credible intervals) for one or two RBesT mixture posterior distributions.
+When two distributions are provided (e.g., for treatment and control arms),
+it also computes these statistics for the difference or ratio between them.
+The function supports exponentiating the results, useful when the original
+parameter of interest is on a log scale (e.g., log-odds, log-mean ratio).
+}
+\examples{
+# Assuming RBesT is installed and loaded
+library(RBesT) # Load RBesT for example
+# Example 1: Single arm, continuous (Normal mixture)
+post_single_norm <- mixnorm(c(0.6, 10, 2), c(0.4, 15, 3))
+inference_single <- posterior_inference(post1 = post_single_norm, quantiles = c(0.025, 0.975))
+print(inference_single)
+
+# Example 2: Two arms, continuous (Difference)
+post_ctrl_norm <- mixnorm(c(1, 12, 2.5)) # Control arm posterior
+inference_diff <- posterior_inference(post1 = post_single_norm, post2 = post_ctrl_norm,
+                                    quantiles = c(0.025, 0.975))
+print(inference_diff)
+
+# Example 3: Two arms, binary (Beta mixture), inference on probability scale
+post_trt_beta <- mixbeta(c(0.7, 10, 5), c(0.3, 2, 8)) # Treatment posterior for probability
+post_ctrl_beta <- mixbeta(c(1, 8, 12)) # Control posterior for probability
+inference_prob_diff <- posterior_inference(post1 = post_trt_beta, post2 = post_ctrl_beta,
+                                         quantiles = c(0.05, 0.95))
+print(inference_prob_diff)
+
+# Example 4: Two arms, log-transformed continuous data (e.g., log-expression), inference on ratio scale
+# Assume post_log_trt and post_log_ctrl are posteriors on the log scale
+post_log_trt <- mixnorm(c(1, log(10), 0.5))
+post_log_ctrl <- mixnorm(c(1, log(5), 0.6))
+inference_log_ratio <- posterior_inference(post1 = post_log_trt, post2 = post_log_ctrl,
+                                         quantiles = c(0.025, 0.975), EXP_TRANSFORM = TRUE)
+# Note: est_compare is exp(log(10) - log(5)) = 10/5 = 2
+# credible interval is exp(CI_log_diff) = exp(CI_log_trt - CI_log_ctrl) = CI_ratio
+print(inference_log_ratio)
+
+}
+\seealso{
+\code{\link{posterior_distribution}}, \code{\link{posterior_prob}},
+\code{\link[RBesT]{summary}}, \code{\link[RBesT]{qmix}}, \code{\link[RBesT]{qmixdiff}}
 }

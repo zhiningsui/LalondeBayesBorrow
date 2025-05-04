@@ -7,25 +7,64 @@
 convert_RBesT_mix(post, endpoint)
 }
 \arguments{
-\item{post}{A data frame. Parameters for the mixture distribution, including the weight (`w`) of each component, and the distribution parameters for each component:
-- For continuous endpoints: `w`, `mu1`, `sigma1`, `mu2`, and `sigma2`.
-- For binary endpoints: `w`, `a1`, `b1`, `a2`, and `b2`.}
+\item{post}{A data frame or a list of parameters. This object should contain
+the parameters defining the mixture components. The expected structure
+depends on the \code{endpoint} type:
+\itemize{
+\item For \code{endpoint = "continuous"} (Normal mixture): Expected columns/elements are
+\code{w} (weight of the first component), \code{mu1} (mean of the first component),
+\code{sigma1} (standard deviation of the first component), \code{mu2} (mean of the
+second component), and \code{sigma2} (standard deviation of the second component).
+The weight of the second component is implicitly \code{1 - w}.
+\item For \code{endpoint = "binary"} (Beta mixture): Expected columns/elements are
+\code{w} (weight of the first component), \code{a1} (alpha parameter of the first component),
+\code{b1} (beta parameter of the first component), \code{a2} (alpha parameter of the
+second component), and \code{b2} (beta parameter of the second component).
+The weight of the second component is implicitly \code{1 - w}.
+The function currently assumes a single row/set of parameters for the mixture,
+representing either a one- or two-component mixture.
+}}
 
-\item{endpoint}{A string. Specifies the type of endpoint ("continuous" for normal distributions, "binary" for beta distributions).}
+\item{endpoint}{A character string. Specifies the type of endpoint and thus
+the type of mixture distribution to create. Must be either \code{"continuous"}
+for a normal mixture (\code{mixnorm}) or \code{"binary"} for a beta mixture (\code{mixbeta}).}
 }
 \value{
-An RBesT mixture distribution object. The object will be of class `mixnorm` for continuous endpoints or `mixbeta` for binary endpoints.
+An RBesT mixture distribution object, specifically of class \code{mixnorm}
+if \code{endpoint} is \code{"continuous"} or \code{mixbeta} if \code{endpoint} is \code{"binary"}.
+Returns an error if the \code{endpoint} is not specified correctly or if required
+parameters are missing or invalid.
 }
 \description{
-This function generates a mixture distribution in the format required by the RBesT package from a given set of parameters.
-It supports both continuous and binary endpoints, constructing either normal or beta mixture distributions based on the endpoint type.
+This function generates a mixture distribution object compatible with the
+RBesT package from a data frame containing component parameters.
+It supports the creation of both normal (\code{mixnorm}) and beta (\code{mixbeta})
+mixture distributions based on the specified endpoint type. The function
+is designed to handle mixture models with up to two components based on the
+provided structure of the input data frame.
 }
 \examples{
-# Example for continuous endpoint
-post <- data.frame(w = 0.5, mu1 = 0, sigma1 = 1, mu2 = 0.5, sigma2 = 1)
-mix_dist <- convert_RBesT_mix(post, endpoint = "continuous")
+# Example for a continuous endpoint (Normal mixture)
+post_continuous <- data.frame(w = 0.6, mu1 = 10, sigma1 = 2, mu2 = 15, sigma2 = 3)
+mix_norm <- convert_RBesT_mix(post_continuous, endpoint = "continuous")
+print(mix_norm)
 
-# Example for binary endpoint
-post <- data.frame(w = 0.5, a1 = 1, b1 = 1, a2 = 2, b2 = 2)
-mix_dist <- convert_RBesT_mix(post, "binary")
+# Example for a binary endpoint (Beta mixture)
+post_binary <- list(w = 0.8, a1 = 5, b1 = 15, a2 = 10, b2 = 10)
+mix_beta <- convert_RBesT_mix(post_binary, endpoint = "binary")
+print(mix_beta)
+
+# Example for a single-component mixture (weight = 1)
+post_single <- data.frame(w = 1, mu1 = 12, sigma1 = 1.5, mu2 = NA, sigma2 = NA)
+mix_single <- convert_RBesT_mix(post_single, endpoint = "continuous")
+print(mix_single)
+
+# Example for a single-component mixture (weight = 0)
+post_single_comp2 <- list(w = 0, mu1 = NA, sigma1 = NA, mu2 = 8, sigma2 = 2.5)
+mix_single_comp2 <- convert_RBesT_mix(post_single_comp2, endpoint = "continuous")
+print(mix_single_comp2)
+
+}
+\seealso{
+\code{\link[RBesT]{mixnorm}}, @seealso \code{\link[RBesT]{mixbeta}}, @seealso \code{\link[RBesT]{mix}}
 }

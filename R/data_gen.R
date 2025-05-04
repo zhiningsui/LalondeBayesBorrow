@@ -14,9 +14,9 @@
 #' @param arm_names A named vector. Each element represents the name of each arm.
 #'
 #' @return A list of data frames:
-#'   - \code{data}: A data frame containing individual-level g-scores for all arms and all repetitions of the simulation.
-#'   - \code{true_value}: A data frame with the true medians for all arms and the true median ratio for treatment vs. control (if both are present).
-#'   - \code{median_est}: A data frame with adjusted median estimates for each arm, along with the variance estimators for the median estimates.
+#'   * `data`: A data frame containing individual-level g-scores for all arms and all repetitions of the simulation.
+#'   * `true_value`: A data frame with the true medians for all arms and the true median ratio for treatment vs. control (if both are present).
+#'   * `median_est`: A data frame with adjusted median estimates for each arm, along with the variance estimators for the median estimates.
 #' @export
 #'
 #' @import dplyr
@@ -24,6 +24,7 @@
 #' @importFrom parallel makeCluster stopCluster clusterExport clusterEvalQ parLapply detectCores
 #' @importFrom data.table data.table rbindlist setcolorder
 #' @importFrom rlang := .data
+#' @seealso `bayesian_lalonde_decision` # Add seealso if it feeds into the main function
 data_gen_gscore <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NULL, mu_list = NULL, sigma_list = NULL, arm_names = NULL) {
   true_value <- data.frame(arm = arm_names,
                            true_value = mapply(get_true_gscore_median,
@@ -110,15 +111,13 @@ data_gen_gscore <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NU
 #' @param n_arms Number of arms (optional, inferred from arm_names if not provided).
 #'
 #' @return A list containing:
-#' \itemize{
-#'   \item \code{data}: A data.table with columns nsim, id, arm, resp, containing
+#'   * `data`: A data.table with columns `nsim`, `id`, `arm`, `resp`, containing
 #'     all simulated binary outcomes (0/1) for all arms and all repetitions.
-#'   \item \code{true_value}: A data frame of true response rates for each arm,
+#'   * `true_value`: A data frame of true response rates for each arm,
 #'     along with the difference in response rates between the treatment and control
 #'     arms (if both are present).
-#'   \item \code{freq}: A data.table of response frequencies per arm per simulation,
-#'     with columns for nsim, arm, count (number of responses), and n (total patients).
-#' }
+#'   * `summary`: A data.table of response frequencies per arm per simulation, # Corrected from 'freq' to 'summary' based on code
+#'     with columns for `nsim`, `arm`, `count` (number of responses), and `n` (total patients).
 #'
 #' @importFrom dplyr %>% group_by summarise mutate ungroup select
 #' @importFrom tidyr pivot_wider
@@ -128,6 +127,7 @@ data_gen_gscore <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NU
 #' @importFrom rlang := .data !! sym
 #'
 #' @export
+#' @seealso `bayesian_lalonde_decision`
 data_gen_binary <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NULL, arm_names = NULL) {
 
   # --- Input Validation ---
@@ -244,29 +244,78 @@ data_gen_binary <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NU
 #' Generate continuous outcome data for multiple arms across multiple simulations
 #'
 #' Generates continuous outcome data by sampling from Normal distributions for each arm
-#' in each simulation replicate.
+#' in each simulation replicate. It produces both the individual-level data and
+#' arm-specific summary statistics (sample size, mean, standard deviation, standard error).
+#' The function supports parallel processing for faster execution across simulations
+#' and includes options for reproducibility via setting a random seed.
 #'
-#' @param nsim Number of simulations
-#' @param n_list Named list of sample sizes per arm (names should match arm_names). Must contain positive integers.
-#' @param mu_list Named list of means per arm (names should match arm_names). Must contain numeric values.
-#' @param sigma_list Named list of standard deviations per arm (names should match arm_names). Must contain non-negative numeric values.
-#' @param arm_names Character vector of arm names.
-#' @param n_arms Number of arms (optional, inferred from arm_names if not provided).
+#' @param nsim A single positive integer. Number of simulations to run.
+#' @param n_list A named list of positive integers. Sample sizes for each arm.
+#'   Names must exactly match `arm_names`.
+#' @param mu_list A named list of numeric values. True means for the Normal
+#'   distribution for each arm. Names must exactly match `arm_names`.
+#' @param sigma_list A named list of non-negative numeric values. True standard
+#'   deviations for the Normal distribution for each arm. Names must exactly
+#'   match `arm_names`.
+#' @param arm_names A character vector. Names of the arms in the simulation. Used
+#'   for naming outputs and matching list elements.
+#' @param seed An integer or `NULL`. If an integer, a seed is set for
+#'   reproducibility of the random number generation across parallel workers.
+#'   Defaults to `NULL`, which means no explicit seed is set beyond R's default behavior.
 #'
 #' @return A list containing:
-#' \itemize{
-#'   \item \code{data}: A data.table with columns nsim, id, arm, value, containing all simulated continuous values.
-#'   \item \code{summary}: A data.table with columns nsim and arm-specific summary statistics (n, mu_hat, sd, s).
-#'   \item \code{true_value}: A data frame with true mean values per arm and potentially a true mean difference (treatment - control).
-#' }
-#' @importFrom dplyr %>% group_by summarise mutate
+#'   * `data`: A `data.table` with columns `nsim` (simulation replicate ID),
+#'     `id` (patient ID within the replicate and arm), `arm` (arm name),
+#'     `value` (simulated continuous outcome). Contains all individual simulated values.
+#'   * `summary`: A `data.table` with columns `nsim` and arm-specific summary
+#'     statistics calculated from the simulated data for each arm and simulation
+#'     replicate. Columns are in wide format, named `[arm_name].n`, `[arm_name].mu_hat`
+#'     (sample mean), `[arm_name].sd` (sample standard deviation), and `[arm_name].s`
+#'     (sample standard error of the mean, `sd/sqrt(n)`).
+#'   * `true_value`: A `data.frame` with the true input mean values per arm
+#'     (columns `[arm_name].mean_true`) and a true mean difference between 'treatment'
+#'     and 'control' arms if both exist (column `compare_true`).
+#'
+#' @importFrom dplyr %>% group_by summarise mutate select
 #' @importFrom tidyr pivot_wider
 #' @importFrom data.table data.table rbindlist
-#' @importFrom parallel makeCluster stopCluster clusterExport clusterEvalQ parLapply detectCores
+#' @importFrom parallel makeCluster stopCluster clusterExport clusterEvalQ parLapply detectCores clusterSetRNGStream
 #' @importFrom stats rnorm sd
 #' @importFrom rlang .data !! sym
 #' @export
-data_gen_continuous <- function(nsim = 10, n_list, mu_list, sigma_list, arm_names, n_arms = length(arm_names)) {
+#'
+#' @examples
+#' # Example 1: Generate data for 2 arms over 5 simulations
+#' n_list <- list(treatment = 50, control = 60)
+#' mu_list <- list(treatment = 10, control = 8)
+#' sigma_list <- list(treatment = 3, control = 3.5)
+#' arm_names <- c("treatment", "control")
+#'
+#' sim_data <- data_gen_continuous(nsim = 5, n_list, mu_list, sigma_list, arm_names)
+#'
+#' # Display structure of results
+#' str(sim_data)
+#'
+#' # Display first few rows of individual data
+#' print(head(sim_data$data))
+#'
+#' # Display the summary data
+#' print(sim_data$summary)
+#'
+#' # Display the true values
+#' print(sim_data$true_value)
+#'
+#' # Example 2: Generate data with a seed for reproducibility
+#' sim_data_reproducible <- data_gen_continuous(nsim = 3, n_list, mu_list,
+#'                                             sigma_list, arm_names, seed = 123)
+#' print(sim_data_reproducible$summary) # Note the summary values
+#'
+#' sim_data_reproducible_again <- data_gen_continuous(nsim = 3, n_list, mu_list,
+#'                                                  sigma_list, arm_names, seed = 123)
+#' print(sim_data_reproducible_again$summary) # Values should match the previous run
+#'
+#' @seealso \code{\link{bayesian_lalonde_decision}}
+data_gen_continuous <- function(nsim = 10, n_list, mu_list, sigma_list, arm_names, seed = NULL) {
 
   # --- Input Validation ---
   if (!is.numeric(nsim) || length(nsim) != 1 || nsim <= 0) {
@@ -276,6 +325,10 @@ data_gen_continuous <- function(nsim = 10, n_list, mu_list, sigma_list, arm_name
     stop("arm_names must be a character vector with at least one arm name.")
   }
 
+  if (!is.list(n_list) || is.null(names(n_list)) || !is.list(mu_list) || is.null(names(mu_list)) || !is.list(sigma_list) || is.null(names(sigma_list))) {
+    stop("n_list, mu_list, and sigma_list must be named lists.")
+  }
+
   expected_list_names <- sort(arm_names)
   if (!all(sort(names(n_list)) == expected_list_names) ||
       !all(sort(names(mu_list)) == expected_list_names) ||
@@ -283,17 +336,22 @@ data_gen_continuous <- function(nsim = 10, n_list, mu_list, sigma_list, arm_name
     stop("Names of n_list, mu_list, and sigma_list must match arm_names.")
   }
 
+
   # Validate contents of the lists
   for (arm in arm_names) {
-    if (!is.numeric(n_list[[arm]]) || length(n_list[[arm]]) != 1 || n_list[[arm]] <= 0 ) {
-      stop(paste("Invalid sample size for arm", arm, ": must be a single positive integer."))
+    if (!is.numeric(n_list[[arm]]) || length(n_list[[arm]]) != 1 || !is.finite(n_list[[arm]]) || n_list[[arm]] <= 0 || n_list[[arm]] != floor(n_list[[arm]]) ) {
+      stop(paste("Invalid sample size for arm '", arm, "': must be a single positive integer.", sep=""))
     }
-    if (!is.numeric(mu_list[[arm]]) || length(mu_list[[arm]]) != 1) {
-      stop(paste("Invalid mean for arm", arm, ": must be a single numeric value."))
+    if (!is.numeric(mu_list[[arm]]) || length(mu_list[[arm]]) != 1 || !is.finite(mu_list[[arm]])) {
+      stop(paste("Invalid mean for arm '", arm, "': must be a single finite numeric value.", sep=""))
     }
-    if (!is.numeric(sigma_list[[arm]]) || length(sigma_list[[arm]]) != 1 || sigma_list[[arm]] < 0) {
-      stop(paste("Invalid standard deviation for arm", arm, ": must be a single non-negative numeric value."))
+    if (!is.numeric(sigma_list[[arm]]) || length(sigma_list[[arm]]) != 1 || !is.finite(sigma_list[[arm]]) || sigma_list[[arm]] < 0) {
+      stop(paste("Invalid standard deviation for arm '", arm, "': must be a single non-negative finite numeric value.", sep=""))
     }
+  }
+
+  if (!is.null(seed) && (!is.numeric(seed) || length(seed) != 1 || !is.finite(seed))) {
+    stop("seed must be a single integer or NULL.")
   }
 
   # --- True mean values and comparison ---
@@ -311,78 +369,140 @@ data_gen_continuous <- function(nsim = 10, n_list, mu_list, sigma_list, arm_name
       mutate(compare_true = NA) # Comparison not applicable
   }
 
-
   # --- Parallel Processing Setup ---
-  # Determine number of cores to use
-  chk <- Sys.getenv("_R_CHECK_LIMIT_CORES_", "")
-  if (nzchar(chk) && chk == "TRUE") {
-    # use 2 cores in CRAN/Travis/AppVeyor
-    ncore <- 2
+  ncore <- if (Sys.getenv("_R_CHECK_LIMIT_CORES_", "") != "") {
+    2 # Use 2 cores in R CMD check
   } else {
-    # use all cores available minus 1, or at least 1
-    ncore <- parallel::detectCores() - 1
+    max(1, detectCores() - 1) # Use max available cores minus 1, or at least 1
   }
-  if (ncore < 1) ncore <- 1
 
-  cl <- makeCluster(ncore)
-  # Ensure cluster is stopped when function exits (either normally or due to error)
-  on.exit(stopCluster(cl))
-
-  # Export necessary objects and load libraries to cluster environment
-  clusterExport(cl, list("n_list", "mu_list", "sigma_list", "arm_names"),
-                envir = environment())
-  clusterEvalQ(cl, {
-    library(dplyr)
-    library(tidyr)
-    library(data.table)
-    library(stats) # For rnorm, sd
-    library(rlang) # For !! sym
+  cl <- tryCatch({
+    makeCluster(ncore)
+  }, error = function(e) {
+    warning(paste("Could not create parallel cluster with", ncore, "cores. Falling back to sequential processing:", e$message))
+    return(NULL) # Indicate fallback
   })
 
-  # --- Parallel Simulation Execution ---
-  results <- parLapply(cl, 1:nsim, function(nrep) {
+  parallel_enabled <- !is.null(cl)
 
-    # Using mapply to apply rnorm with arm-specific parameters
-    simulated_values <- unlist(mapply(stats::rnorm,
+  if (parallel_enabled) {
+
+    on.exit(stopCluster(cl), add = TRUE)
+
+    # Export necessary objects and load libraries to cluster environment
+    clusterExport(cl, list("n_list", "mu_list", "sigma_list", "arm_names", ".data", "!!", "sym"),
+                  envir = environment())
+
+    if (!is.null(seed)) {
+      set.seed(seed)
+      clusterSetRNGStream(cl, seed)
+    } else {
+      clusterSetRNGStream(cl)
+    }
+
+    clusterEvalQ(cl, {
+      # Load necessary libraries on each worker
+      library(dplyr)
+      library(tidyr) # Needed for pivot_wider within worker if done there (it's done later)
+      library(data.table)
+      library(stats) # For rnorm, sd
+      library(rlang) # For !! sym
+    })
+
+    cat(sprintf("Cluster setup complete with %d cores. Starting parallel computation...\n", ncore))
+
+    # --- Parallel Simulation Execution ---
+    results <- parLapply(cl, 1:nsim, function(nrep) {
+
+      # Generate data for each arm using mapply
+      simulated_values_list <- mapply(stats::rnorm,
                                       n = n_list,
                                       mean = mu_list,
                                       sd = sigma_list,
-                                      SIMPLIFY = FALSE))
+                                      SIMPLIFY = FALSE)
 
-    # Create data.table for the current replicate
-    data_temp <- data.table::data.table(
-      nsim = rep(nrep, each = sum(unlist(n_list))),
-      id = unlist(lapply(n_list, seq_len)), # Use seq_len for safety
-      arm = unlist(mapply(rep, names(n_list), unlist(n_list), SIMPLIFY = FALSE)), # Use names(n_list) for arm names
-      value = simulated_values
-    )
+      data_temp <- data.table::rbindlist(lapply(names(simulated_values_list), function(arm_name) {
+        data.table::data.table(
+          arm = arm_name,
+          value = simulated_values_list[[arm_name]]
+        )
+      }))
 
-    # Calculate summary statistics for the current replicate
-    summary_stats <- data_temp %>%
-      group_by(arm) %>%
-      summarise(
-        nsim = unique(nsim),
-        n = n(),
+      data_temp[, nsim := nrep] # Use := for data.table assignment
+      data_temp[, id := seq_len(.N), by = arm] # .N is number of rows in data.table, by=arm assigns id per arm
+
+      summary_stats <- data_temp[, list(
+        nsim = unique(nsim), # Should be just one unique value per replicate
+        n = .N,
         mu_hat = mean(value),
-        sd = stats::sd(value),
-        .groups = "drop"
-      ) %>%
-      mutate(s = .data$sd / sqrt(.data$n)) # Standard error of the mean
+        sd = stats::sd(value) # Use stats::sd explicitly
+      ), by = arm]
 
-    list(data = data_temp, summary = summary_stats)
-  })
+      summary_stats[, s := sd / sqrt(n)] # Use := for data.table assignment
 
-  stopCluster(cl)
+      list(data = data_temp, summary = summary_stats)
+    })
+
+  } else { # Sequential Processing Fallback
+    cat("Sequential computation enabled.\n")
+    # --- Sequential Simulation Execution ---
+    # If cluster creation failed or ncore=1, run sequentially
+    results <- vector("list", nsim)
+    # Set seed for sequential run if provided
+    if (!is.null(seed)) {
+      set.seed(seed)
+    }
+
+    for (nrep in 1:nsim) {
+      # Generate data for each arm using mapply
+      simulated_values_list <- mapply(stats::rnorm,
+                                      n = n_list,
+                                      mean = mu_list,
+                                      sd = sigma_list,
+                                      SIMPLIFY = FALSE)
+
+      # Create individual data.table for the current replicate
+      data_temp <- data.table::rbindlist(lapply(names(simulated_values_list), function(arm_name) {
+        data.table::data.table(
+          arm = arm_name,
+          value = simulated_values_list[[arm_name]]
+        )
+      }))
+
+      # Add nsim and id columns after combining arms
+      data_temp[, nsim := nrep] # Use := for data.table assignment
+      data_temp[, id := seq_len(.N), by = arm] # .N is number of rows in data.table, by=arm assigns id per arm
+
+
+      # Calculate summary statistics for the current replicate using data.table
+      summary_stats <- data_temp[, list(
+        nsim = unique(nsim), # Should be just one unique value per replicate
+        n = .N,
+        mu_hat = mean(value),
+        sd = stats::sd(value) # Use stats::sd explicitly
+      ), by = arm]
+
+      # Calculate standard error of the mean (s = sd / sqrt(n))
+      summary_stats[, s := sd / sqrt(n)] # Use := for data.table assignment
+
+      results[[nrep]] <- list(data = data_temp, summary = summary_stats)
+    }
+  }
 
   # --- Combine Results from all Simulations ---
   data_all <- data.table::rbindlist(lapply(results, "[[", "data"))
-  summary_all <- data.table::rbindlist(lapply(results, "[[", "summary")) %>%
+  summary_all_long <- data.table::rbindlist(lapply(results, "[[", "summary")) # Combine summaries (long format)
+
+  summary_all_wide <- summary_all_long %>%
     pivot_wider(names_from = arm, values_from = c(n, mu_hat, sd, s),
                 names_glue = "{arm}.{.value}")
 
+  summary_cols <- names(summary_all_wide)
+  summary_all_wide <- summary_all_wide %>% select(nsim, everything())
+
   return(list(
-    data = data_all,
-    summary = summary_all,
+    data = data_all, # Returns data.table
+    summary = data.table::as.data.table(summary_all_wide),
     true_value = mean_true
   ))
 }
@@ -474,11 +594,10 @@ simulate_DpR <- function(n, p, mu, sigma) {
 #' @param arm_names Character vector of arm names
 #'
 #' @return A list containing:
-#' \itemize{
-#'   \item \code{data}: A data.table with columns nsim, id, arm, value, containing all simulated DpR values.
-#'   \item \code{summary}: A data.table with columns nsim and arm-specific summary statistics (n, mu_hat, sd, s).
-#'   \item \code{true_value}: A data frame with true mean differences (currently only 'treatment' vs 'control').
-#' }
+#'   * `data`: A data.table with columns `nsim`, `id`, `arm`, `value`, containing all simulated DpR values.
+#'   * `summary`: A data.table with columns `nsim` and arm-specific summary statistics (n, mu_hat, sd, s).
+#'   * `true_value`: A data frame with true mean differences (currently only 'treatment' vs 'control').
+#'
 #' @importFrom dplyr %>% group_by summarise mutate
 #' @importFrom tidyr pivot_wider
 #' @importFrom data.table data.table rbindlist
@@ -486,6 +605,7 @@ simulate_DpR <- function(n, p, mu, sigma) {
 #' @importFrom stats rbinom rgamma sd
 #' @importFrom rlang .data !! sym
 #' @export
+#' @seealso `bayesian_lalonde_decision`
 data_gen_DpR <- function(n_arms, nsim, n_list, p_list, arm_names, mu_list, sigma_list) {
 
   # --- Input Validation ---

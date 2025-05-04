@@ -28,13 +28,13 @@ for the corresponding arm (names must match arm_names). Must contain numeric val
 \value{
 A list containing:
 \itemize{
-  \item \code{data}: A data.table with columns nsim, id, arm, resp, containing
-    all simulated binary outcomes (0/1) for all arms and all repetitions.
-  \item \code{true_value}: A data frame of true response rates for each arm,
-    along with the difference in response rates between the treatment and control
-    arms (if both are present).
-  \item \code{freq}: A data.table of response frequencies per arm per simulation,
-    with columns for nsim, arm, count (number of responses), and n (total patients).
+\item \code{data}: A data.table with columns \code{nsim}, \code{id}, \code{arm}, \code{resp}, containing
+all simulated binary outcomes (0/1) for all arms and all repetitions.
+\item \code{true_value}: A data frame of true response rates for each arm,
+along with the difference in response rates between the treatment and control
+arms (if both are present).
+\item \code{summary}: A data.table of response frequencies per arm per simulation, # Corrected from 'freq' to 'summary' based on code
+with columns for \code{nsim}, \code{arm}, \code{count} (number of responses), and \code{n} (total patients).
 }
 }
 \description{
@@ -43,4 +43,7 @@ across several simulation repetitions. Each arm's data is generated based on
 the specified probabilities of response using a binomial distribution. The
 function returns individual-level data, true response rates, and response
 frequencies per arm per simulation.
+}
+\seealso{
+\code{bayesian_lalonde_decision}
 }
