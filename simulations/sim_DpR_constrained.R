@@ -417,7 +417,7 @@ metrics_df <- metrics_df[, c("control.mean.diff", "control.n", "true_value.compa
                              "bias_avg_mean_diff_Borrowing: Yes", "sd_avg_Borrowing: Yes",
                              "sd_empirical_Borrowing: Yes", "cp_Borrowing: Yes")]
 
-kbl(metrics_df[,-1], escape = F, row.names = F, digits = 3,
+kbl(metrics_df[,-1], escape = F, row.names = F, digits = 4,
     format    = "latex",
     booktabs  = T,
     col.names = c("Sample size", "Delta",
@@ -426,11 +426,15 @@ kbl(metrics_df[,-1], escape = F, row.names = F, digits = 3,
   kable_styling(bootstrap_options = c("condensed")) %>%
   kable_classic(full_width = FALSE) %>%
   add_header_above(c(" " = 2, "Borrowing: No" = 4, "Borrowing: Yes" = 4)) %>%
-  pack_rows(index = c("Case 1" = 9,
-                      "Case 2" = 9,
-                      "Case 3" = 9,
-                      "Case 4" = 9,
-                      "Case 5" = 9))
+  pack_rows(index = c("Case 1" = 15,
+                      "Case 2" = 15,
+                      "Case 3" = 15,
+                      "Case 4" = 15,
+                      "Case 5" = 15,
+                      "Case 6" = 15,
+                      "Case 7" = 15,
+                      "Case 8" = 15,
+                      "Case 9" = 15))
 
 
 
@@ -569,7 +573,7 @@ ggsave("simulations/sim_DpR_constrained_zone_size.jpg", p_oc, width = 14, height
 
 oc2 <- oc_new %>%
   select(control.mean.diff, control.n, true_value.compare_true, borrowing, decision_pr, proportion_pr) %>%
-  mutate(proportion_pr = scales::percent(proportion_pr, 0.1)) %>%
+  mutate(proportion_pr = scales::percent(proportion_pr, 0.01)) %>%
   arrange(decision_pr) %>%
   arrange(true_value.compare_true) %>%
   arrange(borrowing) %>%
@@ -596,11 +600,16 @@ kbl(oc2[,-1], escape = T, row.names = F, digits = 3,
   kable_styling(bootstrap_options = c("condensed")) %>%
   kable_classic(full_width = FALSE) %>%
   add_header_above(c(" " = 2, "Borrowing: No" = 3, "Borrowing: Yes" = 3)) %>%
-  pack_rows(index = c("Case 1:" = 9,
-                      "Case 2:" = 9,
-                      "Case 3:" = 9,
-                      "Case 4:" = 9,
-                      "Case 5:" = 9))
+  pack_rows(index = c("Case 1" = 15,
+                      "Case 2" = 15,
+                      "Case 3" = 15,
+                      "Case 4" = 15,
+                      "Case 5" = 15,
+                      "Case 6" = 15,
+                      "Case 7" = 15,
+                      "Case 8" = 15,
+                      "Case 9" = 15))
+
 
 
 

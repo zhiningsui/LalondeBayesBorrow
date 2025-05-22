@@ -74,10 +74,19 @@
 #'       `Lalonde_decision = TRUE` and `posterior_infer = TRUE`, includes decision
 #'       columns (`decision_pr`, `decision_ci`).
 #'
+#' @importFrom doParallel registerDoParallel stopImplicitCluster
+#' @importFrom foreach foreach %dopar% registerDoSEQ
+#' @importFrom parallel makeCluster stopCluster detectCores
+#' @importFrom data.table as.data.table rbindlist
+#' @importFrom dplyr mutate across case_when select everything
+#' @importFrom tidyr pivot_longer
+#' @importFrom stats setNames
 #' @seealso `posterior_distribution`, `posterior_inference`,
 #'   `posterior_prob`, `convert_RBesT_mix`,
 #'   `RBesT::mix`, `RBesT::mixnorm`, `RBesT::mixbeta`,
 #'   `RBesT::pmixdiff`, `RBesT::qmixdiff`
+#'
+#' @export
 bayesian_lalonde_decision <- function(endpoint, data_summary,
                                       prior_params, lrv = 0, tv = 0, fgr = 0.2, fsr = 0.1, arm_names,
                                       posterior_infer = TRUE, Lalonde_decision = TRUE,
@@ -236,9 +245,11 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
         if (length(arm_cols) > 0) {
           historical_data_list[[arm_nm]] <- setNames(as.list(current_sim_data_dt[, .SD, .SDcols = arm_cols][1,]), sub(prefix, "", arm_cols))
         } else {
+          cat("check1")
           historical_data_list[[arm_nm]] <- NULL
         }
       } else {
+        cat("check2")
         historical_data_list[[arm_nm]] <- NULL
       }
     }
@@ -252,7 +263,9 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
       post_c_res <- posterior_distribution(endpoint = endpoint,
                                            current = arm_data_list[["control"]],
                                            historical = historical_data_list[["control_h"]],
-                                           delta = prior_params[["control.delta"]], w = prior_params[["control.w"]],
+                                           delta_gate = prior_params[["control.delta_gate"]],
+                                           delta_SAM = prior_params[["control.delta_SAM"]],
+                                           w = prior_params[["control.w"]],
                                            a = prior_params[["control.a"]], b = prior_params[["control.b"]],
                                            a0 = prior_params[["control.a0"]], b0 = prior_params[["control.b0"]],
                                            theta0 = prior_params[["control.theta0"]], s0 = prior_params[["control.s0"]],
@@ -261,7 +274,9 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
       post_t_res <- posterior_distribution(endpoint = endpoint,
                                            current = arm_data_list[["treatment"]],
                                            historical = historical_data_list[["treatment_h"]],
-                                           delta = prior_params[["treatment.delta"]], w = prior_params[["treatment.w"]],
+                                           delta_gate = prior_params[["treatment.delta_gate"]],
+                                           delta_SAM = prior_params[["treatment.delta_SAM"]],
+                                           w = prior_params[["treatment.w"]],
                                            a = prior_params[["treatment.a"]], b = prior_params[["treatment.b"]],
                                            a0 = prior_params[["treatment.a0"]], b0 = prior_params[["treatment.b0"]],
                                            theta0 = prior_params[["treatment.theta0"]], s0 = prior_params[["treatment.s0"]],

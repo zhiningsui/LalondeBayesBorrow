@@ -1,16 +1,14 @@
 #' Obtain Posterior Distribution for Single Arm
 #'
-#' @description
 #' This function calculates the posterior distribution for one-arm trial data
 #' with either continuous or binary endpoints, incorporating current data
-#' and optionally borrowing from historical data.
-#'
-#' @details
-#' It supports the SAM prior (Self-Adaptive Mixture) for automatic conflict
-#' detection when borrowing is enabled (`w = NULL`) and allows specification of
-#' a fixed mixture weight for the informative component (`w` is numeric). A power
-#' prior mechanism is included via the `ess_h` parameter to control the influence
-#' of historical data.
+#' and optionally borrowing from historical data. It supports the SAM prior
+#' (Self-Adaptive Mixture) for automatic conflict detection when borrowing
+#' is enabled (`w = NULL`) and allows specification of a fixed mixture weight
+#' for the informative component (`w` is numeric). A power prior mechanism is
+#' included via the `ess_h` parameter to control the influence of historical data.
+#' Additionally, a gating mechanism is applied: if the prior-data conflict exceeds
+#' a threshold (`delta_gate`), borrowing is disabled regardless of the SAM weight.
 #'
 #' @param endpoint A string. The type of endpoint, either `'continuous'`
 #'   (assumes Normal likelihood and Normal-Inverse-Gamma conjugacy on mean/variance)
@@ -23,12 +21,13 @@
 #'   in the same format as the `current` parameter. If `NULL` (default),
 #'   no historical data is used, and borrowing is disabled (`w` is effectively 0).
 #'   If provided, historical sample size `n` must be non-negative.
-#' @param delta A scalar positive value, or `NULL`. The clinical significant difference
+#' @param delta_SAM A scalar positive value, or `NULL`. The clinical significant difference
 #'   threshold used in the SAM prior calculation to detect prior-data conflict.
 #'   Only used if `w` is `NULL`. The interpretation depends on the `endpoint`:
 #'   for `'continuous'`, it's on the mean scale; for `'binary'`, it's on the
 #'   probability scale. If `NULL` and `w` is `NULL`, default values (0.2 for
 #'   continuous, 0.1 for binary) are used.
+#' @param delta_gate A scalar positive value or NULL. Threshold for the gating mechanism: if prior-data conflict exceeds this, borrowing is disabled. If NULL, gate is not applied.
 #' @param w A scalar value between 0 and 1, or `NULL`.
 #'   * If a numeric value (0 to 1): Specifies a fixed initial weight for
 #'       the informative (historical) component of the mixture prior. Borrowing occurs
@@ -89,7 +88,8 @@
 #' post_sam_cont <- posterior_distribution(endpoint = "continuous",
 #'                                         current = current_cont,
 #'                                         historical = historical_cont,
-#'                                         delta = 0.2, theta0 = 1.6, s0 = 2)
+#'                                         delta_SAM = 0.2, delta_gate = 0.2,
+#'                                         theta0 = 1.6, s0 = 2)
 #' str(post_sam_cont)
 #'
 #' # Continuous Endpoint - Fixed weight (no SAM), with ESS discounting
@@ -114,7 +114,8 @@
 #' post_sam_bin <- posterior_distribution(endpoint = "binary",
 #'                                        current = current_bin,
 #'                                        historical = historical_bin,
-#'                                        delta = 0.1, a = 0.5, b = 0.5, # Non-informative Beta(0.5, 0.5)
+#'                                        delta_SAM = 0.1, delta_gate = 0.1,
+#'                                        a = 0.5, b = 0.5, # Non-informative Beta(0.5, 0.5)
 #'                                        a0 = 1, b0 = 1) # Base for informative Beta(1, 1)
 #' str(post_sam_bin)
 #'
@@ -135,7 +136,8 @@
 #'
 #' @seealso \code{\link{posterior_inference}}, \code{\link{posterior_prob}},
 #'   \code{\link[RBesT]{mix}}, \code{\link[RBesT]{mixnorm}}, \code{\link[RBesT]{mixbeta}}
-posterior_distribution <- function(endpoint, current, historical = NULL, delta = NULL,
+posterior_distribution <- function(endpoint, current, historical = NULL, delta_SAM = NULL,
+                                   delta_gate = NULL,
                                    w = NULL, a = 0.01, b = 0.01, a0 = 0.01, b0 = 0.01,
                                    theta0 = 0, s0 = 100, ess_h = NULL) {
   # --- Input Validation ---
@@ -285,90 +287,87 @@ posterior_distribution <- function(endpoint, current, historical = NULL, delta =
   w_prior <- w_input_used # Start with input w (could be NULL or fixed or forced to 0)
 
   if (is.null(w_input_used) && power_alpha > 0) {
-    if (is.null(delta) || !is.numeric(delta) || length(delta) != 1 || !is.finite(delta) || delta <= 0) {
-      delta <- if (endpoint == "continuous") 0.2 else 0.1
-      warning(paste("Parameter 'delta' was NULL or invalid when w is NULL. Using default delta =", delta, "for", endpoint, "endpoint.", sep=" "))
+    if (is.null(delta_SAM) || !is.numeric(delta_SAM) || length(delta_SAM) != 1 || !is.finite(delta_SAM) || delta_SAM <= 0) {
+      delta_SAM <- if (endpoint == "continuous") 0.2 else 0.1
+      warning(paste("Parameter 'delta_SAM' was NULL or invalid. Using default delta_SAM =", delta_SAM, "for", endpoint, "endpoint."))
     }
 
     if (endpoint == "continuous") {
-      if (is.na(sh) || sh <= 0) {
-        stop("Historical standard deviation 's' must be positive for SAM calculation with continuous endpoint.")
-      }
-      # Pooled standard deviation assuming equal variance (approximation often used in SAM)
+      if (is.na(sh) || sh <= 0)  stop("Historical standard deviation 's' must be positive for SAM calculation with continuous endpoint.")
+
+      # Pooled standard deviation
       pooled_n_total <- nh + n
       df_pooled <- if (pooled_n_total > 2) pooled_n_total - 2 else 1 # Avoid negative or zero df
-      s_pooled <- sqrt( ( ifelse(nh > 1, nh - 1, 0) * sh^2 + ifelse(n > 1, n - 1, 0) * s^2 ) / df_pooled )
+      sigma2_pooled <- ( ifelse(nh > 1, nh - 1, 0) * nh * sh^2 + ifelse(n > 1, n - 1, 0) * n * s^2 ) / df_pooled
+      s_pooled <- sqrt( sigma2_pooled / n )
 
-      # Avoid division by zero if s_pooled is 0
-      if (s_pooled < .Machine$double.eps) {
-        warning("Pooled standard deviation is effectively zero. SAM calculation may be unstable. Returning w_prior = 0.")
+      if (!is.null(delta_gate) && abs(y - yh) >= delta_gate) {
+        message("Gate applied: |current - historical| >= delta_gate. Setting w_prior = 0.")
         w_prior <- 0
       } else {
-        # SAM conflict calculation for Normal means based on likelihood ratio of shifted means
-        # Likelihood at observed difference (y-yh)
-        loglik_obs_diff <- dnorm(y - yh, mean = 0, sd = s_pooled, log = TRUE)
-        # Maximum likelihood at shifted difference (delta or -delta)
-        loglik_shifted_diff_plus <- dnorm(y - yh, mean = delta, sd = s_pooled, log = TRUE)
-        loglik_shifted_diff_minus <- dnorm(y - yh, mean = -delta, sd = s_pooled, log = TRUE)
-
-        loglik_max_shifted <- max(loglik_shifted_diff_plus, loglik_shifted_diff_minus)
-
-        # R = exp(loglik_obs_diff - loglik_max_shifted)
-        log_R <- loglik_obs_diff - loglik_max_shifted
-
-        # Avoid issues with exp(large number)
-        if (log_R > 700) { # Approx log(Inf)
-          R <- 1e300 # Cap R
-        } else if (log_R < -700) { # Approx log(0)
-          R <- 1e-300 # Avoid R=0 if possible
-        }
-        else {
-          R <- exp(log_R)
+        if (!is.null(delta_gate)) {
+          message("Gate not triggered: |current - historical| < delta_gate. Proceeding with SAM prior.")
         }
 
-        w_prior <- R / (1 + R)
+        # SAM starts here
+
+        if (s_pooled < .Machine$double.eps) { # Avoid division by zero if s_pooled is 0
+          warning("Pooled SD ~0. Unstable SAM weight. Forcing w_prior = 0.")
+          w_prior <- 0
+        } else {
+          # SAM conflict calculation for Normal means based on likelihood ratio of shifted means
+          # Likelihood at observed difference (y-yh)
+          loglik_obs_diff <- dnorm(y - yh, mean = 0, sd = s_pooled, log = TRUE)
+
+          # Maximum likelihood at shifted difference (delta or -delta)
+          loglik_shifted_plus <- dnorm(y - yh, mean = delta_SAM, sd = s_pooled, log = TRUE)
+          loglik_shifted_minus <- dnorm(y - yh, mean = -delta_SAM, sd = s_pooled, log = TRUE)
+
+          loglik_max_shifted <- max(loglik_shifted_plus, loglik_shifted_minus)
+          log_R <- loglik_obs_diff - loglik_max_shifted
+
+          R <- if (log_R > 700) 1e300 else if (log_R < -700) 1e-300 else exp(log_R)
+          w_prior <- R / (1 + R)
+        }
       }
-
-    } else { # binary
+    } else if (endpoint == "binary") {
       if (is.na(xh) || is.na(nh) || nh <= 0) {
         stop("Internal error: Historical data invalid for SAM calculation.")
       }
 
       thetah_prior_mean <- (a + xh) / (a + b + nh)
+      thetac_current_mean <- x / n
 
-      if (thetah_prior_mean <= 0 + .Machine$double.eps || thetah_prior_mean >= 1 - .Machine$double.eps) {
-        warning("Historical prior mean used in SAM is at or near boundary (0 or 1). SAM calculation may be unstable. Returning w_prior = 0.")
+      if (!is.null(delta_gate) && abs(thetac_current_mean - thetah_prior_mean) >= delta_gate) {
+        message("Gate applied: |current - historical| >= delta_gate. Setting w_prior = 0.")
         w_prior <- 0
-      } else {
-        loglik_obs <- dbinom(x, size = n, prob = thetah_prior_mean, log = TRUE)
-
-        # Calculate likelihood of current data under shifted probabilities (+/- delta)
-        thetah_plus_delta <- min(thetah_prior_mean + delta, 1 - .Machine$double.eps) # Subtract tiny epsilon to avoid prob=1 edge case in dbinom
-        thetah_minus_delta <- max(thetah_prior_mean - delta, .Machine$double.eps) # Add tiny epsilon to avoid prob=0 edge case in dbinom
-
-        loglik_shifted_plus <- dbinom(x, size = n, prob = thetah_plus_delta, log = TRUE)
-        loglik_shifted_minus <- dbinom(x, size = n, prob = thetah_minus_delta, log = TRUE)
-
-        loglik_max_shifted <- max(loglik_shifted_plus, loglik_shifted_minus)
-
-        log_R <- loglik_obs - loglik_max_shifted
-        if (log_R > 700) {
-          R <- 1e300
-        } else if (log_R < -700) {
-          R <- 1e-300
-        }
-        else {
-          R <- exp(log_R)
+      } else {  # Otherwise, compute SAM prior weight as usual
+        if (!is.null(delta_gate)) {
+          message("Gate not triggered: |current - historical| < delta_gate. Proceeding with SAM prior.")
         }
 
-        w_prior <- R / (1 + R)
+        if (thetah_prior_mean <= .Machine$double.eps || thetah_prior_mean >= 1 - .Machine$double.eps) {
+          warning("Historical prior mean near 0/1. Unstable SAM weight. Forcing w_prior = 0.")
+          w_prior <- 0
+        } else {
+          loglik_obs <- dbinom(x, size = n, prob = thetah_prior_mean, log = TRUE)
+          # Calculate likelihood of current data under shifted probabilities (+/- delta)
+          thetah_plus_delta <- min(thetah_prior_mean + delta_SAM, 1 - .Machine$double.eps) # Subtract tiny epsilon to avoid prob=1 edge case in dbinom
+          thetah_minus_delta <- max(thetah_prior_mean - delta_SAM, .Machine$double.eps) # Add tiny epsilon to avoid prob=0 edge case in dbinom
+
+          loglik_shifted_plus <- dbinom(x, size = n, prob = thetah_plus_delta, log = TRUE)
+          loglik_shifted_minus <- dbinom(x, size = n, prob = thetah_minus_delta, log = TRUE)
+          loglik_max_shifted <- max(loglik_shifted_plus, loglik_shifted_minus)
+
+          log_R <- loglik_obs - loglik_max_shifted
+          R <- if (log_R > 700) 1e300 else if (log_R < -700) 1e-300 else exp(log_R)
+          w_prior <- R / (1 + R)
+        }
       }
     }
   } else if (is.null(w_input_used) && power_alpha == 0) {
-    # If w is NULL but effective historical data is zero, force w_prior to 0
-    w_prior <- 0
+    w_prior <- 0 # If w is NULL but effective historical data is zero, force w_prior to 0
   }
-
   w_prior <- max(0, min(1, w_prior))
 
   # --- Calculate Posterior Distribution Parameters ---

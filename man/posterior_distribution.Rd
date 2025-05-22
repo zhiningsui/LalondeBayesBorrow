@@ -8,7 +8,8 @@ posterior_distribution(
   endpoint,
   current,
   historical = NULL,
-  delta = NULL,
+  delta_SAM = NULL,
+  delta_gate = NULL,
   w = NULL,
   a = 0.01,
   b = 0.01,
@@ -36,12 +37,14 @@ in the same format as the \code{current} parameter. If \code{NULL} (default),
 no historical data is used, and borrowing is disabled (\code{w} is effectively 0).
 If provided, historical sample size \code{n} must be non-negative.}
 
-\item{delta}{A scalar positive value, or \code{NULL}. The clinical significant difference
+\item{delta_SAM}{A scalar positive value, or \code{NULL}. The clinical significant difference
 threshold used in the SAM prior calculation to detect prior-data conflict.
 Only used if \code{w} is \code{NULL}. The interpretation depends on the \code{endpoint}:
 for \code{'continuous'}, it's on the mean scale; for \code{'binary'}, it's on the
 probability scale. If \code{NULL} and \code{w} is \code{NULL}, default values (0.2 for
 continuous, 0.1 for binary) are used.}
+
+\item{delta_gate}{A scalar positive value or NULL. Threshold for the gating mechanism: if prior-data conflict exceeds this, borrowing is disabled. If NULL, gate is not applied.}
 
 \item{w}{A scalar value between 0 and 1, or \code{NULL}.
 \itemize{
@@ -109,14 +112,13 @@ Returns an error if inputs are invalid or required parameters are missing.
 \description{
 This function calculates the posterior distribution for one-arm trial data
 with either continuous or binary endpoints, incorporating current data
-and optionally borrowing from historical data.
-}
-\details{
-It supports the SAM prior (Self-Adaptive Mixture) for automatic conflict
-detection when borrowing is enabled (\code{w = NULL}) and allows specification of
-a fixed mixture weight for the informative component (\code{w} is numeric). A power
-prior mechanism is included via the \code{ess_h} parameter to control the influence
-of historical data.
+and optionally borrowing from historical data. It supports the SAM prior
+(Self-Adaptive Mixture) for automatic conflict detection when borrowing
+is enabled (\code{w = NULL}) and allows specification of a fixed mixture weight
+for the informative component (\code{w} is numeric). A power prior mechanism is
+included via the \code{ess_h} parameter to control the influence of historical data.
+Additionally, a gating mechanism is applied: if the prior-data conflict exceeds
+a threshold (\code{delta_gate}), borrowing is disabled regardless of the SAM weight.
 }
 \examples{
 # Continuous Endpoint - SAM prior
@@ -126,7 +128,8 @@ historical_cont <- list(n = 100, mu_hat = 1.5, s = 0.4)
 post_sam_cont <- posterior_distribution(endpoint = "continuous",
                                         current = current_cont,
                                         historical = historical_cont,
-                                        delta = 0.2, theta0 = 1.6, s0 = 2)
+                                        delta_SAM = 0.2, delta_gate = 0.2,
+                                        theta0 = 1.6, s0 = 2)
 str(post_sam_cont)
 
 # Continuous Endpoint - Fixed weight (no SAM), with ESS discounting
@@ -151,7 +154,8 @@ historical_bin <- list(n = 100, count = 60)
 post_sam_bin <- posterior_distribution(endpoint = "binary",
                                        current = current_bin,
                                        historical = historical_bin,
-                                       delta = 0.1, a = 0.5, b = 0.5, # Non-informative Beta(0.5, 0.5)
+                                       delta_SAM = 0.1, delta_gate = 0.1,
+                                       a = 0.5, b = 0.5, # Non-informative Beta(0.5, 0.5)
                                        a0 = 1, b0 = 1) # Base for informative Beta(1, 1)
 str(post_sam_bin)
 

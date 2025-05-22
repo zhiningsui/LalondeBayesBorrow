@@ -9,7 +9,8 @@ data_gen_binary(
   nsim = 10,
   n_list = NULL,
   prob_list = NULL,
-  arm_names = NULL
+  arm_names = NULL,
+  seed = NULL
 )
 }
 \arguments{
@@ -24,6 +25,10 @@ the corresponding arm (names must match arm_names). Must contain positive intege
 for the corresponding arm (names must match arm_names). Must contain numeric values between 0 and 1.}
 
 \item{arm_names}{A character vector of arm names.}
+
+\item{seed}{An integer or \code{NULL}. If an integer, a seed is set for
+reproducibility of the random number generation across parallel workers.
+Defaults to \code{NULL}, which means no explicit seed is set beyond R's default behavior.}
 }
 \value{
 A list containing:

@@ -109,6 +109,9 @@ data_gen_gscore <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NU
 #'   for the corresponding arm (names must match arm_names). Must contain numeric values between 0 and 1.
 #' @param arm_names A character vector of arm names.
 #' @param n_arms Number of arms (optional, inferred from arm_names if not provided).
+#' @param seed An integer or `NULL`. If an integer, a seed is set for
+#'   reproducibility of the random number generation across parallel workers.
+#'   Defaults to `NULL`, which means no explicit seed is set beyond R's default behavior.
 #'
 #' @return A list containing:
 #'   * `data`: A data.table with columns `nsim`, `id`, `arm`, `resp`, containing
@@ -128,7 +131,7 @@ data_gen_gscore <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NU
 #'
 #' @export
 #' @seealso `bayesian_lalonde_decision`
-data_gen_binary <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NULL, arm_names = NULL) {
+data_gen_binary <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NULL, arm_names = NULL, seed = NULL) {
 
   # --- Input Validation ---
   if (!is.numeric(nsim) || length(nsim) != 1 || nsim <= 0 ) {
@@ -188,6 +191,14 @@ data_gen_binary <- function(n_arms = 2, nsim = 10, n_list = NULL, prob_list = NU
   # Export necessary objects and load libraries to cluster environment
   clusterExport(cl, list("n_list", "prob_list", "arm_names", "n_arms"),
                 envir = environment())
+
+  if (!is.null(seed)) {
+    set.seed(seed)
+    clusterSetRNGStream(cl, seed)
+  } else {
+    clusterSetRNGStream(cl)
+  }
+
   clusterEvalQ(cl, {
     library(dplyr)
     library(tidyr)
