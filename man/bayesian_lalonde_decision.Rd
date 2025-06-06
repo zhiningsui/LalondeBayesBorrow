@@ -22,11 +22,10 @@ bayesian_lalonde_decision(
 \item{endpoint}{A character string. The type of endpoint. Must be \code{'continuous'} or \code{'binary'}.
 This determines the likelihood and prior structure used by \code{posterior_distribution}.}
 
-\item{data_summary}{A data frame. Contains summarized data for each arm for each
-simulation repetition. Must include an \code{nsim} column identifying the simulation
-repetition number. Data for each arm and its parameters should be in columns
-prefixed by the arm name and a dot (e.g., \code{control.n}, \code{treatment.mu_hat},
-\code{control_h.count}).
+\item{data_summary}{A data frame. For a single analysis, this can be a single-row
+data frame without an \code{nsim} column. For simulations, it must contain an \code{nsim}
+column. Data for each arm and its parameters should be in columns prefixed
+by the arm name and a dot (e.g., \code{control.n}, \code{treatment.mu_hat}, \code{control_h.count}).
 \itemize{
 \item For \code{'continuous'} endpoint, required columns per arm (e.g., \code{control.})
 are \code{n} (sample size), \code{mu_hat} (sample mean), \code{s} (standard deviation of sample mean).

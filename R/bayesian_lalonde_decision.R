@@ -18,11 +18,10 @@
 #'
 #' @param endpoint A character string. The type of endpoint. Must be `'continuous'` or `'binary'`.
 #'   This determines the likelihood and prior structure used by `posterior_distribution`.
-#' @param data_summary A data frame. Contains summarized data for each arm for each
-#'   simulation repetition. Must include an `nsim` column identifying the simulation
-#'   repetition number. Data for each arm and its parameters should be in columns
-#'   prefixed by the arm name and a dot (e.g., `control.n`, `treatment.mu_hat`,
-#'   `control_h.count`).
+#' @param data_summary A data frame. For a single analysis, this can be a single-row
+#'   data frame without an `nsim` column. For simulations, it must contain an `nsim`
+#'   column. Data for each arm and its parameters should be in columns prefixed
+#'   by the arm name and a dot (e.g., `control.n`, `treatment.mu_hat`, `control_h.count`).
 #'   * For `'continuous'` endpoint, required columns per arm (e.g., `control.`)
 #'       are `n` (sample size), `mu_hat` (sample mean), `s` (standard deviation of sample mean).
 #'   * For `'binary'` endpoint, required columns per arm (e.g., `control.`)
@@ -100,8 +99,17 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
   if (!is.data.frame(data_summary)) {
     stop("Input 'data_summary' must be a data frame.")
   }
+
+  is_simulation <- "nsim" %in% names(data_summary) && length(unique(data_summary$nsim)) > 1
+
+  # If not a simulation, ensure only one row of data is present
+  if (!is_simulation && nrow(data_summary) > 1) {
+    warning("`data_summary` has more than one row but is not a simulation (no `nsim` column or only one `nsim` value). Only the first row will be used for analysis.")
+    data_summary <- data_summary[1, , drop = FALSE]
+  }
+  # Add nsim column if it's a single analysis
   if (!"nsim" %in% names(data_summary)) {
-    stop("Input 'data_summary' must contain an 'nsim' column.")
+    data_summary$nsim <- 1
   }
   if (!is.list(prior_params) || is.null(names(prior_params))) {
     stop("Input 'prior_params' must be a named list.")
@@ -133,73 +141,62 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
 
   all_nsims <- sort(unique(data_summary$nsim))
   N_sims <- length(all_nsims)
+  cat(sprintf("Processing %d analysis/simulation run(s).\n", N_sims))
 
-  if (N_sims == 0) {
-    stop("No simulations found in data_summary after filtering by 'nsim'.")
-  }
-  cat(sprintf("Processing %d simulations found in data_summary.\n", N_sims))
+  # --- Cluster Setup for Simulations ---
+  if (is_simulation) {
+    is_restricted <- Sys.getenv("CI") == "true" ||
+      Sys.getenv("TRAVIS") == "true" ||
+      Sys.getenv("GITHUB_ACTIONS") == "true" ||
+      Sys.getenv("_R_CHECK_LIMIT_CORES_") == "true"
 
-  # --- Cluster Setup ---
-  is_restricted <- Sys.getenv("CI") == "true" ||
-    Sys.getenv("TRAVIS") == "true" ||
-    Sys.getenv("GITHUB_ACTIONS") == "true" ||
-    Sys.getenv("_R_CHECK_LIMIT_CORES_") == "true"
-
-  ncore <- if (is_restricted) {
-    2 # Use a limited number of cores in restricted environments
-  } else {
-    max(1, detectCores() - 1) # Use max available cores minus 1
-  }
-
-  cat(sprintf("Setting up parallel backend with %d cores.\n", ncore))
-  cl <- tryCatch({
-    makeCluster(ncore)
-  }, error = function(e) {
-    warning(paste("Could not create parallel cluster with", ncore, "cores. Falling back to sequential processing:", e$message))
-    return(NULL) # Indicate fallback
-  })
-
-  if (!is.null(cl)) {
-    # Explicitly list functions defined locally or expected to be in the environment
-    required_funcs <- c("posterior_distribution", "convert_RBesT_mix",
-                        "posterior_inference", "posterior_prob")
-
-    # Check which required functions are available in the current environment or global environment
-    available_funcs <- sapply(required_funcs, function(f) exists(f, where = environment(NULL), inherits = TRUE))
-    if (!all(available_funcs)) {
-      missing_funcs <- required_funcs[!available_funcs]
-      stop(paste("Required functions for parallel export are missing:", paste(missing_funcs, collapse = ", "),
-                 ". Please ensure they are defined in the current session.", sep=""))
-    }
-
-    required_vars_for_export <- c("endpoint", "lrv", "tv", "fgr", "fsr", "arm_names",
-                                  "prior_params", "EXP_TRANSFORM", "posterior_infer")
-    # data_summary is sliced per worker, no need to export the whole thing
-
-    clusterExport(cl, c(required_vars_for_export, required_funcs), envir = environment(NULL))
-
-    # Load necessary packages on each worker
-    clusterEvalQ(cl, {
-      library(dplyr)
-      library(tidyr)
-      library(RBesT)
-      library(data.table)
+    ncore <- if (is_restricted) 2 else max(1, parallel::detectCores() - 1)
+    cl <- tryCatch({
+      parallel::makeCluster(ncore)
+      cat(sprintf("Setting up parallel backend with %d cores.\n", ncore))
+    }, error = function(e) {
+      warning(paste("Could not create parallel cluster with", ncore, "cores. Falling back to sequential processing:", e$message))
+      return(NULL)
     })
 
-    registerDoParallel(cl)
-    cat("Cluster setup complete. Starting parallel computation...\n")
-    parallel_enabled <- TRUE
+    if (!is.null(cl)) {
+      required_funcs <- c("posterior_distribution", "convert_RBesT_mix",
+                          "posterior_inference", "posterior_prob")
+      available_funcs <- sapply(required_funcs, function(f) exists(f, where = environment(NULL), inherits = TRUE))
+      if (!all(available_funcs)) {
+        missing_funcs <- required_funcs[!available_funcs]
+        stop(paste("Required functions for parallel export are missing:", paste(missing_funcs, collapse = ", "),
+                   ". Please ensure they are defined in the current session.", sep=""))
+      }
+      required_vars_for_export <- c("endpoint", "lrv", "tv", "fgr", "fsr", "arm_names",
+                                    "prior_params", "EXP_TRANSFORM", "posterior_infer")
+      parallel::clusterExport(cl, c(required_vars_for_export, required_funcs), envir = environment(NULL))
+
+      parallel::clusterEvalQ(cl, {
+        library(dplyr)
+        library(tidyr)
+        library(RBesT)
+        library(data.table)
+      })
+
+      doParallel::registerDoParallel(cl)
+      on.exit(parallel::stopCluster(cl))
+      cat("Cluster setup complete. Starting parallel computation...\n")
+      parallel_enabled <- TRUE
+    } else {
+      foreach::registerDoSEQ()
+      cat("Proceeding with sequential computation.\n")
+      parallel_enabled <- FALSE
+    }
   } else {
-    # Fallback to sequential processing if cluster creation failed
-    registerDoSEQ()
-    cat("Proceeding with sequential computation.\n")
+    foreach::registerDoSEQ()
     parallel_enabled <- FALSE
   }
 
   # --- Combined Parallel Loop ---
   data_summary_dt <- data.table::as.data.table(data_summary)
 
-  results_list <- foreach(
+  results_list <- foreach::foreach(
     nrep_val = all_nsims,
     .combine = function(a, b) data.table::rbindlist(list(a, b)),
     .errorhandling = 'stop',
@@ -329,7 +326,6 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
     post_est_ci_i <- post_inference_results$post_est_ci
     post_t_mix_valid <- post_inference_results$post_t_mix
     post_c_mix_valid <- post_inference_results$post_c_mix
-
 
     # 4. Optional Lalonde Inference (Quantiles and Probabilities)
     lalonde_criteria_i <- NULL

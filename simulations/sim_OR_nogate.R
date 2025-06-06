@@ -14,7 +14,7 @@ param_grid_h <- expand.grid(
 
 param_grid1 <- expand.grid(
   trt_n = c(45),
-  ctrl_p = seq(0.15, 0.45, 0.05),
+  ctrl_p = seq(0.1, 0.5, 0.05),
   stringsAsFactors = FALSE
 ) %>%
   mutate(ctrl_n = trt_n,
@@ -22,7 +22,7 @@ param_grid1 <- expand.grid(
 
 param_grid2 <- expand.grid(
   trt_n = c(45),
-  ctrl_p = seq(0.15, 0.45, 0.05),
+  ctrl_p = seq(0.1, 0.5, 0.05),
   stringsAsFactors = FALSE
 ) %>%
   mutate(ctrl_n = trt_n,
@@ -81,7 +81,7 @@ for (i in seq_along(data_gen_params_list)) {
     control.a = 1,
     control.b = 1,
     control.w = c(NA, 0),
-    control.delta_SAM = c(0.1, 0.15),
+    control.delta_SAM = c(0.05, 0.1, 0.15),
     control.ess_h = c(45, 90, 180),
     stringsAsFactors = FALSE
   )
@@ -97,7 +97,7 @@ for (i in seq_along(data_gen_params_list)) {
     control.a = 1,
     control.b = 1,
     control.w = c(NA, 0),
-    control.delta_gate = c(0.1, 0.15),
+    control.delta_gate = c(0.05, 0.1, 0.15),
     control.ess_h = c(45, 90, 180),
     stringsAsFactors = FALSE
   ) %>%
@@ -157,7 +157,7 @@ for (i in seq_along(data_gen_params_list)) {
 
 # old <- readRDS("simulations/sim_OR_bayes_results_5_19.rds")
 # bayes_results <- c(old, bayes_results)
-saveRDS(bayes_results, file = "simulations/sim_OR_bayes_results_5_19.rds")
+saveRDS(bayes_results, file = "simulations/sim_OR_bayes_results_5_23.rds")
 
 
 post_params_all <- data.frame()
@@ -196,7 +196,7 @@ bayes_results_all <- list(
   oc_all = oc_all
 )
 
-saveRDS(bayes_results_all, "simulations/sim_OR_bayes_results_df_5_19.rds")
+saveRDS(bayes_results_all, "simulations/sim_OR_bayes_results_df_5_23.rds")
 
 
 
@@ -594,7 +594,7 @@ saveRDS(bayes_results_all, "simulations/sim_OR_bayes_results_df_5_19_beta001.rds
 
 # Analysis I ----------------------------------------------------------------
 
-bayes_results_all <- readRDS("simulations/sim_OR_bayes_results_df_5_19.rds")
+bayes_results_all <- readRDS("simulations/sim_OR_bayes_results_df_5_23.rds")
 
 # + Check posterior weights -----------------------------------------------
 
@@ -613,11 +613,12 @@ post_params_all <- bayes_results_all$post_params_all %>%
          "control.p.diff",
          "control.w_prior", "control.w_post") %>%
   mutate(control.p.diff = factor(control.p.diff,
-                                 levels = c("-0.15", "-0.1", "-0.05", "0", "0.05", "0.1", "0.15")),
+                                 levels = c("-0.2", "-0.15", "-0.1", "-0.05", "0", "0.05", "0.1", "0.15", "0.2")),
          control.delta_SAM = factor(control.delta_SAM,
-                                     levels = c("0.1", "0.15"),
-                                     labels = c(expression(paste(delta, " = 0.1")),
-                                                expression(paste(delta, " = 0.15")))),
+                                    levels = c("0.05", "0.1", "0.15"),
+                                    labels = c(expression(paste(delta, " = 0.05")),
+                                               expression(paste(delta, " = 0.1")),
+                                               expression(paste(delta, " = 0.15")))),
          control.ess_h = factor(control.ess_h,
                                 levels = c("45", "90", "180"),
                                 labels = c(expression(n[ch*","*e] == 45),
@@ -625,11 +626,13 @@ post_params_all <- bayes_results_all$post_params_all %>%
                                            expression(n[ch*","*e] == 180))))
 
 shade_df <- data.frame(
-  control.delta_SAM = factor(c(0.1, 0.15), levels = c("0.1", "0.15"),
-                              labels = c(expression(paste(delta, " = 0.1")),
-                                         expression(paste(delta, " = 0.15")))),
-  xmin = c(2, 1),
-  xmax = c(6, 7),
+  control.delta_SAM = factor(c(0.05, 0.1, 0.15),
+                             levels = c("0.05", "0.1", "0.15"),
+                             labels = c(expression(paste(delta, " = 0.05")),
+                                        expression(paste(delta, " = 0.1")),
+                                        expression(paste(delta, " = 0.15")))),
+  xmin = c(4, 3, 2),
+  xmax = c(6, 7, 8),
   ymin = -Inf,
   ymax = Inf)
 
@@ -675,11 +678,11 @@ p2 <- ggplot(post_params_all, aes(x = control.p.diff, y = control.w_post)) +
 
 library(patchwork)
 p1 / p2
-ggsave(filename = "simulations/sim_OR_SAM_weight_5_19.jpg", p1 / p2,
-       width = 13, height = 8)
+ggsave(filename = "simulations/sim_OR_SAM_weight_5_23.jpg", p1 / p2,
+       width = 16, height = 10)
 
 
-# + Generate summary table for paper --------------------------------------
+# + Generate summary table --------------------------------------
 
 post_inference_all <-  bayes_results_all$post_inference_all %>%
   mutate(borrowing = ifelse(is.na(control.w), "Borrowing: Yes", "Borrowing: No"),
@@ -738,9 +741,56 @@ metrics_tab_1 <- metrics_tab %>%
   pivot_wider(names_from = c(borrowing, control.delta_SAM, control.ess_h),
               values_from = value, names_sort = T) %>%
   mutate(name = factor(name, levels = c("FGR", "FSR", "CGR", "CSR", "mean_pmd", "sd_pmd"))) %>%
-  select(c(1,3,2,4,10:15)) %>%
+  select(c(1,3,2,4,13:21)) %>%
   arrange(gate, name, control.p) %>%
-  select(c(1:3, 5:10, 4))
+  select(c(1:3, 5:13, 4))
+
+
+metrics_tab_1 <- metrics_tab_1 %>%
+  pivot_wider(names_from = gate, values_from = 4:13, names_vary = "slowest")
+
+kbl(metrics_tab_1,
+    escape = F,
+    # format = "latex",
+    row.names = FALSE,
+    digits = 4,
+    col.names = c("Metric", "control.p",
+                  rep(c("45", "90", "180"), 3),
+                  "No Borrowing",
+                  rep(c("45", "90", "180"), 3),
+                  "No Borrowing")) %>%
+  kable_styling(bootstrap_options = c("condensed"), full_width = FALSE) %>%
+  kable_classic(full_width = FALSE) %>%
+    add_header_above(c(
+      " " = 1,
+      " " = 1,
+      "Borrowing with delta = 0.05" = 3,
+      "Borrowing with delta = 0.1" = 3,
+      "Borrowing with delta = 0.15" = 3,
+      "No Borrowing" = 1,
+      "Borrowing with delta = 0.05" = 3,
+      "Borrowing with delta = 0.1" = 3,
+      "Borrowing with delta = 0.15" = 3,
+      "No Borrowing" = 1
+    )) %>%
+    add_header_above(c(
+      " " = 1,
+      " " = 1,
+      "Gated Control: No" = 10,
+      "Gated Control: Yes" = 10
+    )) %>%
+  collapse_rows(columns = 1, valign = "middle")
+
+# metrics_tab_1 <- metrics_tab %>%
+#   mutate(mean_pmd = ifelse(borrowing == "Borrowing: No", NA, mean_pmd),
+#          sd_pmd = ifelse(borrowing == "Borrowing: No", NA, sd_pmd)) %>%
+#   pivot_longer(c(FGR, FSR, CGR, CSR, mean_pmd, sd_pmd)) %>%
+#   pivot_wider(names_from = c(borrowing, control.delta_SAM, control.ess_h),
+#               values_from = value, names_sort = T) %>%
+#   mutate(name = factor(name, levels = c("FGR", "FSR", "CGR", "CSR", "mean_pmd", "sd_pmd"))) %>%
+#   select(c(1,3,2,4,10:15)) %>%
+#   arrange(gate, name, control.p) %>%
+#   select(c(1:3, 5:10, 4))
 
 # kbl(metrics_tab_1[, -1],
 #     escape = F,
@@ -760,40 +810,40 @@ metrics_tab_1 <- metrics_tab %>%
 #   pack_rows("Gated Control: Yes", 43, 84) %>%
 #   collapse_rows(columns = 1, valign = "middle")
 
-metrics_tab_1 <- metrics_tab_1 %>%
-  pivot_wider(names_from = gate, values_from = 4:10, names_vary = "slowest")
-
-kbl(metrics_tab_1[, -1],
-    escape = FALSE,
-    row.names = FALSE,
-    digits = 4,
-    col.names = c(
-      "control.p",
-      rep(c("45", "90", "180"), 2), "",
-      rep(c("45", "90", "180"), 2), ""
-    )) %>%
-  kable_styling(bootstrap_options = c("condensed"), full_width = FALSE) %>%
-  kable_classic(full_width = FALSE) %>%
-  add_header_above(c(
-    " " = 1,
-    "Borrowing with delta = 0.1" = 3,
-    "Borrowing with delta = 0.15" = 3,
-    "No Borrowing" = 1,
-    "Borrowing with delta = 0.1" = 3,
-    "Borrowing with delta = 0.15" = 3,
-    "No Borrowing" = 1
-  )) %>%
-  add_header_above(c(
-    " " = 1,
-    "Gated Control: No" = 7,
-    "Gated Control: Yes" = 7
-  )) %>%
-  pack_rows("FGR", 1, 7) %>%
-  pack_rows("FSR", 8, 14) %>%
-  pack_rows("CGR", 14, 21) %>%
-  pack_rows("CSR", 22, 28) %>%
-  pack_rows("Mean Control PMD", 29, 35) %>%
-  pack_rows("SD Control PMD", 36, 42)
+# metrics_tab_1 <- metrics_tab_1 %>%
+#   pivot_wider(names_from = gate, values_from = 4:10, names_vary = "slowest")
+#
+# kbl(metrics_tab_1[, -1],
+#     escape = FALSE,
+#     row.names = FALSE,
+#     digits = 4,
+#     col.names = c(
+#       "control.p",
+#       rep(c("45", "90", "180"), 2), "",
+#       rep(c("45", "90", "180"), 2), ""
+#     )) %>%
+#   kable_styling(bootstrap_options = c("condensed"), full_width = FALSE) %>%
+#   kable_classic(full_width = FALSE) %>%
+#   add_header_above(c(
+#     " " = 1,
+#     "Borrowing with delta = 0.1" = 3,
+#     "Borrowing with delta = 0.15" = 3,
+#     "No Borrowing" = 1,
+#     "Borrowing with delta = 0.1" = 3,
+#     "Borrowing with delta = 0.15" = 3,
+#     "No Borrowing" = 1
+#   )) %>%
+#   add_header_above(c(
+#     " " = 1,
+#     "Gated Control: No" = 7,
+#     "Gated Control: Yes" = 7
+#   )) %>%
+#   pack_rows("FGR", 1, 7) %>%
+#   pack_rows("FSR", 8, 14) %>%
+#   pack_rows("CGR", 14, 21) %>%
+#   pack_rows("CSR", 22, 28) %>%
+#   pack_rows("Mean Control PMD", 29, 35) %>%
+#   pack_rows("SD Control PMD", 36, 42)
 
 
 # + Visualize Risks -------------------------------------------------------
@@ -802,11 +852,12 @@ kbl(metrics_tab_1[, -1],
 risk_df <- risk_df %>%
   pivot_longer(c(FSR, FGR)) %>%
   mutate(control.p = factor(control.p,
-                            levels = c("0.15", "0.2", "0.25", "0.3", "0.35", "0.4", "0.45")),
+                            levels = c("0.1", "0.15", "0.2", "0.25", "0.3", "0.35", "0.4", "0.45", "0.5")),
          control.delta_SAM = factor(control.delta_SAM,
-                                     levels = c("0.1", "0.15"),
-                                     labels = c(expression(paste(delta, " = 0.1")),
-                                                expression(paste(delta, " = 0.15")))),
+                                    levels = c("0.05", "0.1", "0.15"),
+                                    labels = c(expression(paste(delta, " = 0.05")),
+                                               expression(paste(delta, " = 0.1")),
+                                               expression(paste(delta, " = 0.15")))),
          control.ess_h = factor(control.ess_h,
                                 levels = c("45", "90", "180"),
                                 labels = c(expression(n[ch*","*e] == 45),
@@ -814,11 +865,13 @@ risk_df <- risk_df %>%
                                            expression(n[ch*","*e] == 180))))
 
 shade_df <- data.frame(
-  control.delta_SAM = factor(c(0.1, 0.15), levels = c("0.1", "0.15"),
-                              labels = c(expression(paste(delta, " = 0.1")),
-                                         expression(paste(delta, " = 0.15")))),
-  xmin = c(2, 1),
-  xmax = c(6, 7),
+  control.delta_SAM = factor(c(0.05, 0.1, 0.15),
+                             levels = c("0.05", "0.1", "0.15"),
+                             labels = c(expression(paste(delta, " = 0.05")),
+                                        expression(paste(delta, " = 0.1")),
+                                        expression(paste(delta, " = 0.15")))),
+  xmin = c(4, 3, 2),
+  xmax = c(6, 7, 8),
   ymin = -Inf,
   ymax = Inf)
 
@@ -837,7 +890,7 @@ p_risk <- ggplot(risk_df %>% filter(borrowing == "Borrowing: Yes"),
                                  control.delta_SAM = label_parsed)) +
   labs(y = "Risk Value",
        color = "", shape = "") +
-  xlab(~ paste(theta[c], " - ", theta[ch])) +
+  xlab(~ paste("Concurrent Control ORR (", theta[c], ")")) +
   geom_hline(aes(yintercept = 0.2, color = "FGR"), linetype = "dashed") +  # Horizontal line for false go risk
   geom_hline(aes(yintercept = 0.1, color = "FSR"), linetype = "dashed") +
   theme_bw()+
@@ -851,7 +904,7 @@ p_risk <- ggplot(risk_df %>% filter(borrowing == "Borrowing: Yes"),
 
 p_risk
 
-ggsave( "simulations/sim_OR_conflict_vs_risk_5_19.jpg", p_risk, width = 10, height = 5)
+ggsave( "simulations/sim_OR_conflict_vs_risk_5_23.jpg", p_risk, width = 11, height = 6)
 
 
 
@@ -891,11 +944,12 @@ names(myColors) <- levels(oc_new$decision_pr)
 
 oc_new$true_value.compare_true <- factor(oc_new$true_value.compare_true)
 oc_new$control.p.diff <- factor(oc_new$control.p.diff,
-                                levels = c("-0.15", "-0.1", "-0.05", "0", "0.05", "0.1", "0.15"))
+                                levels = c("-0.2", "-0.15", "-0.1", "-0.05", "0", "0.05", "0.1", "0.15", "0.2"))
 oc_new$control.delta_SAM <- factor(oc_new$control.delta_SAM,
-                                    levels = c("0.1", "0.15"),
-                                    labels = c(expression(paste(delta, " = 0.1")),
-                                               expression(paste(delta, " = 0.15"))))
+                                   levels = c("0.05", "0.1", "0.15"),
+                                   labels = c(expression(paste(delta, " = 0.05")),
+                                              expression(paste(delta, " = 0.1")),
+                                              expression(paste(delta, " = 0.15"))))
 oc_new$control.ess_h <- factor(oc_new$control.ess_h,
                                levels = c("45", "90", "180"),
                                labels = c(expression(n[ch*","*e] == 45),
@@ -940,7 +994,372 @@ p_oc <- p_list[[1]] + p_list[[2]] +
         axis.text = element_text(size = 10),
         strip.text = element_text(size = 12))
 p_oc
-ggsave("simulations/sim_OR_zone_size_5_19.jpg", p_oc, width = 20, height = 15)
+ggsave("simulations/sim_OR_zone_size_5_23.jpg", p_oc, width = 30, height = 15)
+
+
+# Borrowing only
+oc_new_borrow <- oc_new[oc_new$borrowing == "Borrowing: Yes",]
+
+p_list <- list()
+for (i in levels(oc_new_borrow$true_value.compare_true)) {
+  oc_tmp <- oc_new_borrow[oc_new_borrow$true_value.compare_true == i, ]
+
+  p_list[[i]] <- ggplot(oc_tmp,
+                        aes(x = control.p.diff, y = proportion_pr, fill = decision_pr)) +
+    geom_bar(stat = "identity", width = 1) +
+    geom_text(aes(y = label_ypos, label = scales::percent(proportion_pr, 0.01)),
+              vjust = 1.6,
+              fontface = "bold",
+              size = 2) +
+    scale_fill_manual(name = "Decision", values = myColors)+
+    facet_grid(control.ess_h+gate~control.delta_SAM,
+               labeller = labeller(control.ess_h = label_parsed,
+                                   control.delta_SAM = label_parsed)) +
+    ggtitle(bquote(Delta == .(i))) +
+    labs(x =expression(paste(Delta[c], " = ", theta[c], " - ", theta[ch])), y = "Probability") +
+    theme(legend.position = "bottom",
+          title = element_text(size = 12),
+          legend.text = element_text(size = 10),
+          axis.text = element_text(size = 9),
+          strip.text = element_text(size = 12)) +
+    theme_bw()
+}
+
+library(patchwork)
+p_oc <- p_list[[1]] + p_list[[2]] +
+  plot_layout(ncol = 2, guides = "collect") &
+  theme(legend.position = "bottom",
+        title = element_text(size = 13),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 11),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        strip.text = element_text(size = 12))
+p_oc
+ggsave("simulations/sim_OR_zone_size_5_23_borrow.jpg", p_oc, width = 20, height = 12)
+
+# + Check posterior weights (for paper) -----------------------------------------------
+
+post_params_all <- bayes_results_all$post_params_all %>%
+  mutate(across(
+    .cols = -c(ends_with(".name")),
+    .fns = as.numeric
+  )) %>%
+  mutate(borrowing = ifelse(is.na(control.w), "Borrowing: Yes", "Borrowing: No"),
+         gate = ifelse(is.na(control.delta_gate), "Gated Control: No", "Gated Control: Yes"),
+         control.p.diff = control.p - control_h.p) %>%
+  filter(borrowing == "Borrowing: Yes") %>%
+  select("nsim", "gate",
+         "true_value.compare_true",
+         "control.delta_SAM", "control.ess_h",
+         "control.p.diff",
+         "control.w_prior", "control.w_post") %>%
+  mutate(control.p.diff = factor(control.p.diff,
+                                 levels = c("-0.15", "-0.1", "-0.05", "0", "0.05", "0.1", "0.15")),
+         control.delta_SAM = factor(control.delta_SAM,
+                                     levels = c("0.1", "0.15"),
+                                     labels = c(expression(paste(delta, " = 0.1")),
+                                                expression(paste(delta, " = 0.15")))),
+         control.ess_h = factor(control.ess_h,
+                                levels = c("45", "90", "180"),
+                                labels = c(expression(n[ch*","*e] == 45),
+                                           expression(n[ch*","*e] == 90),
+                                           expression(n[ch*","*e] == 180)))) %>%
+  subset(gate == "Gated Control: Yes")
+
+shade_df <- data.frame(
+  control.delta_SAM = factor(c(0.1, 0.15), levels = c("0.1", "0.15"),
+                              labels = c(expression(paste(delta, " = 0.1")),
+                                         expression(paste(delta, " = 0.15")))),
+  xmin = c(2, 1),
+  xmax = c(6, 7),
+  ymin = -Inf,
+  ymax = Inf)
+
+p1 <- ggplot(post_params_all, aes(x = control.p.diff, y = control.w_prior)) +
+  geom_rect(
+    data = shade_df,
+    aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
+        group = control.delta_SAM),
+    inherit.aes = FALSE,
+    fill = "blue", alpha = 0.1
+  ) +
+  geom_boxplot(width = 0.6, outlier.size = 0.6, outlier.alpha = 0.5) +
+  facet_grid(control.delta_SAM ~ control.ess_h,
+             labeller = labeller(control.ess_h = label_parsed,
+                                 control.delta_SAM = label_parsed)) +
+  labs(
+    x = expression(paste(theta[c], " - ", theta[ch])),
+    y = "Prior Weight",
+    title = "Prior Weight of Informative Component of SAM Prior (OR endpoint)"
+  ) +
+  ylim(c(0,1)) +
+  theme_bw() +
+  theme(strip.text.x = element_text(size = 10))
+
+p2 <- ggplot(post_params_all, aes(x = control.p.diff, y = control.w_post)) +
+  geom_rect(
+    data = shade_df,
+    aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
+        group = control.delta_SAM),
+    inherit.aes = FALSE,
+    fill = "blue", alpha = 0.1
+  ) +
+  geom_boxplot(width = 0.6, outlier.size = 0.6, outlier.alpha = 0.5) +
+  facet_grid(control.delta_SAM ~ control.ess_h,
+             labeller = labeller(control.ess_h = label_parsed,
+                                 control.delta_SAM = label_parsed)) +
+  labs(x = expression(paste(theta[c], " - ", theta[ch])),
+       y = "Posterior Weight",
+       title = "Posterior Weight of Informative Component of SAM Prior (OR endpoint)") +
+  ylim(c(0,1)) +
+  theme_bw() +
+  theme(strip.text.x = element_text(size = 10))
+
+library(patchwork)
+p1 / p2
+ggsave(filename = "simulations/sim_OR_SAM_weight_5_19_paper.jpg", p1 / p2,
+       width = 7, height = 7)
+
+
+# + Generate summary table (for paper) --------------------------------------
+
+post_inference_all <-  bayes_results_all$post_inference_all %>%
+  mutate(borrowing = ifelse(is.na(control.w), "Borrowing: Yes", "Borrowing: No"),
+         gate = ifelse(is.na(control.delta_gate), "Gated Control: No", "Gated Control: Yes"),
+         control.p.diff = control.p - control_h.p) %>%
+  select("nsim", "borrowing", "gate",
+         "true_value.compare_true",
+         "control.delta_SAM", "control.ess_h",
+         "control.p",
+         "est2_lalonde") %>%
+  pivot_wider(names_from = borrowing, values_from = est2_lalonde) %>%
+  mutate(pmd = `Borrowing: Yes` - `Borrowing: No`) %>%
+  select(-c(`Borrowing: Yes`, `Borrowing: No`, true_value.compare_true)) %>%
+  subset(gate == "Gated Control: Yes")
+
+
+# Summary statistics of PMD on control
+metrics_tab <- post_inference_all %>%
+  group_by(control.delta_SAM, control.ess_h, control.p) %>%
+  summarize(mean_pmd = mean(pmd),
+            sd_pmd = sd(pmd),
+            .groups = "drop")
+
+# risks
+risk_df <- bayes_results_all$oc_all %>%
+  mutate(borrowing = ifelse(is.na(control.w), "Borrowing: Yes", "Borrowing: No"),
+         gate = ifelse(is.na(control.delta_gate), "Gated Control: No", "Gated Control: Yes"),
+         control.p.diff = control.p - control_h.p) %>%
+  filter(true_value.compare_true %in% c(0.1, 0.2),
+         decision_pr %in% c("go", "no-go")) %>%
+  mutate(
+    CorrectLabel = case_when(
+      true_value.compare_true == 0.2 & decision_pr == "go" ~ "CGR",
+      true_value.compare_true == 0.1 & decision_pr == "no-go" ~ "CSR",
+      TRUE ~ NA_character_
+    ),
+    RiskLabel = case_when(
+      true_value.compare_true == 0.1 & decision_pr == "go" ~ "FGR",
+      true_value.compare_true == 0.2 & decision_pr == "no-go" ~ "FSR",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  pivot_longer(cols = c(CorrectLabel, RiskLabel), names_to = "type", values_to = "label") %>%
+  filter(!is.na(label)) %>%
+  group_by(gate, borrowing, control.delta_SAM, control.ess_h, control.p, label) %>%
+  summarize(prop = mean(proportion_pr), .groups = "drop") %>%
+  pivot_wider(names_from = label, values_from = prop) %>%
+  subset(gate == "Gated Control: Yes")
+
+
+metrics_tab <- merge(metrics_tab, risk_df,
+                     by = c("control.delta_SAM", "control.ess_h","control.p"),
+                     all = TRUE)
+
+metrics_tab_1 <- metrics_tab %>%
+  mutate(mean_pmd = ifelse(borrowing == "Borrowing: No", NA, mean_pmd),
+         sd_pmd = ifelse(borrowing == "Borrowing: No", NA, sd_pmd)) %>%
+  pivot_longer(c(FGR, FSR, CGR, CSR, mean_pmd, sd_pmd)) %>%
+  pivot_wider(names_from = c(borrowing, control.delta_SAM, control.ess_h),
+              values_from = value, names_sort = T) %>%
+  mutate(name = factor(name, levels = c("FGR", "FSR", "CGR", "CSR", "mean_pmd", "sd_pmd"))) %>%
+  arrange(name, control.p) %>%
+  select(c(3,1,10:15,4))
+
+
+
+kbl(metrics_tab_1,
+    format = "latex",
+    escape = FALSE,
+    row.names = FALSE,
+    digits = 4,
+    col.names = c(
+      "Metric",
+      "control.p",
+      rep(c("45", "90", "180"), 2), ""
+    )) %>%
+  kable_styling(bootstrap_options = c("condensed"), full_width = FALSE) %>%
+  kable_classic(full_width = FALSE) %>%
+  add_header_above(c(
+    " " = 1,
+    " " = 1,
+    "Borrowing with delta = 0.1" = 3,
+    "Borrowing with delta = 0.15" = 3,
+    "No Borrowing" = 1
+  )) %>%
+  collapse_rows(columns = 1, valign = "top")
+
+
+
+# + Visualize Risks (for paper) -------------------------------------------------------
+
+# Visualize risks
+risk_df <- risk_df %>%
+  pivot_longer(c(FSR, FGR)) %>%
+  mutate(control.p = factor(control.p,
+                            levels = c("0.15", "0.2", "0.25", "0.3", "0.35", "0.4", "0.45")),
+         control.delta_SAM = factor(control.delta_SAM,
+                                     levels = c("0.1", "0.15"),
+                                     labels = c(expression(paste(delta, " = 0.1")),
+                                                expression(paste(delta, " = 0.15")))),
+         control.ess_h = factor(control.ess_h,
+                                levels = c("45", "90", "180"),
+                                labels = c(expression(n[ch*","*e] == 45),
+                                           expression(n[ch*","*e] == 90),
+                                           expression(n[ch*","*e] == 180)))) %>%
+  subset(gate == "Gated Control: Yes" & borrowing == "Borrowing: Yes")
+
+shade_df <- data.frame(
+  control.delta_SAM = factor(c(0.1, 0.15), levels = c("0.1", "0.15"),
+                              labels = c(expression(paste(delta, " = 0.1")),
+                                         expression(paste(delta, " = 0.15")))),
+  xmin = c(2, 1),
+  xmax = c(6, 7),
+  ymin = -Inf,
+  ymax = Inf)
+
+p_risk <- ggplot(risk_df,
+                 aes(x = control.p, y = value, color = name)) +
+  geom_point(size = 2) +
+  geom_rect(
+    data = shade_df,
+    aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
+        group = control.delta_SAM),
+    inherit.aes = FALSE,
+    fill = "blue", alpha = 0.1
+  ) +
+  facet_grid(control.delta_SAM ~ control.ess_h,
+             labeller = labeller(control.ess_h = label_parsed,
+                                 control.delta_SAM = label_parsed)) +
+  labs(y = "Rate",
+       color = "", shape = "") +
+  xlab(~ paste("Concurrent Control ORR (", theta[c], ")")) +
+  geom_hline(aes(yintercept = 0.2, color = "FGR"), linetype = "dashed") +  # Horizontal line for false go risk
+  geom_hline(aes(yintercept = 0.1, color = "FSR"), linetype = "dashed") +
+  theme_bw()+
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 13),
+        legend.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        strip.text = element_text(size = 13)
+  )
+
+p_risk
+
+ggsave( "simulations/sim_OR_conflict_vs_risk_5_19_paper.jpg", p_risk, width = 9, height = 5)
+
+
+# + Visualize OC (for paper) ----------------------------------------------------------
+
+oc_df <- bayes_results_all$oc_all %>%
+  mutate(borrowing = ifelse(is.na(control.w), "Borrowing: Yes", "Borrowing: No"),
+         gate = ifelse(is.na(control.delta_gate), "Gated Control: No", "Gated Control: Yes"),
+         control.p.diff = control.p - control_h.p) %>%
+  select("i", "gate", "borrowing",
+         "true_value.compare_true",
+         "control.delta_SAM", "control.ess_h",
+         "control.p.diff",
+         "decision_pr", "proportion_pr", "proportion_ci") %>%
+  mutate(decision_pr = factor(decision_pr, levels = c("no-go", "consider", "go"),
+                              labels = c("No-Go", "Consider", "Go")),
+         true_value.compare_true = ifelse(true_value.compare_true == 0.2, "0.2 (TV)", "0.1 (LRV)")) %>%
+  subset(gate == "Gated Control: Yes")
+
+oc_new <- data.frame()
+oc_tmp <- na.omit(oc_df)
+for (i in seq(1, nrow(oc_tmp), 3)) {
+  tmp <- oc_tmp[i:(i+2),]
+  tmp[tmp$decision_pr == "Go", "label_ypos"] <- tmp[tmp$decision_pr == "Go", "proportion_pr"]
+  tmp[tmp$decision_pr == "Consider", "label_ypos"] <- tmp[tmp$decision_pr == "Go", "proportion_pr"] + tmp[tmp$decision_pr == "Consider", "proportion_pr"]
+  tmp[tmp$decision_pr == "No-Go", "label_ypos"] <- 1
+  oc_new <- rbind(oc_new, tmp)
+}
+
+oc_new <- oc_new[, c("true_value.compare_true", "control.delta_SAM", "control.ess_h",
+                     "borrowing",
+                     "control.p.diff",
+                     "decision_pr", "proportion_pr", "label_ypos")]
+
+oc_new$control.p.diff <- factor(oc_new$control.p.diff)
+myColors <- c("red","#F0E442","#009E73")
+names(myColors) <- levels(oc_new$decision_pr)
+
+oc_new$true_value.compare_true <- factor(oc_new$true_value.compare_true)
+oc_new$control.p.diff <- factor(oc_new$control.p.diff,
+                                levels = c("-0.15", "-0.1", "-0.05", "0", "0.05", "0.1", "0.15"))
+oc_new$control.delta_SAM <- factor(oc_new$control.delta_SAM,
+                                    levels = c("0.1", "0.15"),
+                                    labels = c(expression(paste(delta, " = 0.1")),
+                                               expression(paste(delta, " = 0.15"))))
+oc_new$control.ess_h <- factor(oc_new$control.ess_h,
+                               levels = c("45", "90", "180"),
+                               labels = c(expression(n[ch*","*e] == 45),
+                                          expression(n[ch*","*e] == 90),
+                                          expression(n[ch*","*e] == 180)))
+
+
+p_list <- list()
+for (i in levels(oc_new$true_value.compare_true)) {
+  oc_tmp <- oc_new[oc_new$true_value.compare_true == i, ]
+
+  p_list[[i]] <- ggplot(oc_tmp,
+                        aes(x = control.p.diff, y = proportion_pr, fill = decision_pr)) +
+    geom_bar(stat = "identity", width = 1) +
+    geom_text(aes(y = label_ypos, label = scales::percent(proportion_pr, 0.01)),
+              vjust = 1.6,
+              fontface = "bold",
+              size = 2) +
+    scale_fill_manual(name = "Decision", values = myColors)+
+    facet_grid(control.ess_h~control.delta_SAM+borrowing,
+               labeller = labeller(control.ess_h = label_parsed,
+                                   control.delta_SAM = label_parsed,
+                                   borrowing = label_parsed)) +
+    ggtitle(bquote("OR Endpoint, " ~ Delta == .(i))) +
+    labs(x =expression(paste("Prior-data Conflict (", theta[c], " - ", theta[ch], ")")),
+         y = "Probability") +
+    theme(legend.position = "bottom",
+          title = element_text(size = 12),
+          legend.text = element_text(size = 10),
+          axis.text = element_text(size = 9),
+          strip.text = element_text(size = 12)) +
+    theme_bw()
+}
+
+library(patchwork)
+p_oc <- p_list[[1]] + p_list[[2]] +
+  plot_layout(ncol = 2, guides = "collect") &
+  theme(legend.position = "bottom",
+        title = element_text(size = 13),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 11),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10),
+        strip.text = element_text(size = 12))
+p_oc
+ggsave("simulations/sim_OR_zone_size_5_19_paper.jpg", p_oc, width = 20, height = 8)
+
 
 
 
