@@ -18,3 +18,58 @@ You can install the development version of `LalondeBayesBorrow` from GitHub with
 devtools::install_github("zhiningsui/LalondeBayesBorrow")
 ```
 
+## Getting Started: A Quick Example
+Here's a simple example of how to use the package to analyze a single dataset with a continuous endpoint.
+```R
+library(LalondeBayesBorrow)
+
+# 1. Prepare your data
+# For a single analysis, you just need a data frame with summary statistics.
+# Let's assume you have a treatment and a control arm.
+current_data <- data.frame(
+  treatment.n = 50,
+  treatment.mu_hat = 1.8,
+  treatment.s = 0.5,
+  control.n = 50,
+  control.mu_hat = 1.5,
+  control.s = 0.4
+)
+
+# You can also include historical data to borrow from.
+historical_data <- data.frame(
+  control_h.n = 100,
+  control_h.mu_hat = 1.6,
+  control_h.s = 0.4
+)
+
+# 2. Set up your prior parameters
+# These parameters define the non-informative and informative priors.
+# We'll use a SAM prior, so we set `control.w = NULL`.
+prior_params <- list(
+  treatment.theta0 = 0,   # Non-informative prior mean for treatment
+  treatment.s0 = 100,     # Non-informative prior SD for treatment
+  control.theta0 = 1.6,   # Non-informative prior mean for control
+  control.s0 = 100,       # Non-informative prior SD for control
+  control.w = NULL,       # Use SAM prior for weight
+  control.delta_SAM = 0.2,  # Clinically significant difference for SAM
+  control.ess_h = 50      # Effective sample size from historical data
+)
+
+# 3. Run the analysis
+# The main function is `lalonde_analysis`.
+results <- lalonde_analysis(
+  endpoint = "continuous",
+  current_data = current_data,
+  historical_data = historical_data,
+  prior_params = prior_params,
+  lrv = 0,         # Lower reference value
+  tv = 0.2,        # Target value
+  fgr = 0.2,       # False Go Rate
+  fsr = 0.1        # False Stop Rate
+)
+
+# 4. View the results
+# The results list contains the posterior inference and the go/no-go decision.
+print(results$post_inference)
+print(results$decision)
+```
