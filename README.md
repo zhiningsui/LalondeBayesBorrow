@@ -12,5 +12,9 @@
 - Operating Characteristics: Calculate and visualize operating characteristics like the False Go Rate (FGR) and False Stop Rate (FSR).
 
 ## Installation  
+You can install the development version of `LalondeBayesBorrow` from GitHub with:
 ```R
+# install.packages("devtools")
 devtools::install_github("zhiningsui/LalondeBayesBorrow")
+```
+
