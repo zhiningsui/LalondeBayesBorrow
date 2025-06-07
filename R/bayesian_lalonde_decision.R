@@ -27,6 +27,8 @@
 #'   * For `'binary'` endpoint, required columns per arm (e.g., `control.`)
 #'       are `n` (sample size), `count` (number of responses/events).
 #'   Historical arm data (e.g., `control_h.n`, `treatment_h.count`) are optional.
+#' @param settings A data frame (optional). Contains the settings for the simulation
+#'   run. If provided, it will be combined with the results.
 #' @param prior_params A named list. Contains prior distribution and borrowing
 #'   parameters for each arm (treatment and control, potentially historical).
 #'   Names must follow the convention `[arm_name].[parameter]`, matching the
@@ -86,7 +88,7 @@
 #'   `RBesT::pmixdiff`, `RBesT::qmixdiff`
 #'
 #' @export
-bayesian_lalonde_decision <- function(endpoint, data_summary,
+bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL,
                                       prior_params, lrv = 0, tv = 0, fgr = 0.2, fsr = 0.1, arm_names,
                                       posterior_infer = TRUE, Lalonde_decision = TRUE,
                                       EXP_TRANSFORM = FALSE) {
@@ -111,6 +113,7 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
   if (!"nsim" %in% names(data_summary)) {
     data_summary$nsim <- 1
   }
+
   if (!is.list(prior_params) || is.null(names(prior_params))) {
     stop("Input 'prior_params' must be a named list.")
   }
@@ -406,10 +409,10 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
         }
 
         decision_pr <- case_when(
-          (post_prob_i$pr_t > fsr) & (post_prob_i$pr_l + post_prob_i$pr_t > 1 - fgr) ~ "go",
-          (post_prob_i$pr_t > fsr) & (post_prob_i$pr_l + post_prob_i$pr_t <= 1 - fgr) ~ "consider",
-          post_prob_i$pr_t <= fsr ~ "no-go",
-          TRUE ~ NA_character_ # Should not happen if pr_t is not NA
+          (post_prob_i$pr_t > fsr) & (post_prob_i$pr_l + post_prob_i$pr_t > 1 - fgr) ~ "Go",
+          (post_prob_i$pr_t > fsr) & (post_prob_i$pr_l + post_prob_i$pr_t <= 1 - fgr) ~ "Consider",
+          post_prob_i$pr_t <= fsr ~ "No-Go",
+          TRUE ~ NA_character_
         )
 
         # CI Decision
@@ -418,16 +421,16 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
 
         decision_ci <- if (lrv < tv) { # "Greater is better" implied (lrv < tv)
           case_when(
-            ci_upper_bound > tv & ci_lower_bound > lrv ~ "go",
-            ci_upper_bound > tv & ci_lower_bound <= lrv ~ "consider",
-            ci_upper_bound <= tv ~ "no-go",
+            ci_upper_bound > tv & ci_lower_bound > lrv ~ "Go",
+            ci_upper_bound > tv & ci_lower_bound <= lrv ~ "Consider",
+            ci_upper_bound <= tv ~ "No-Go",
             TRUE ~ NA_character_
           )
         } else { # "Less is better" implied (lrv > tv)
           case_when(
-            ci_lower_bound < tv & ci_upper_bound < lrv ~ "go",
-            ci_lower_bound < tv & ci_upper_bound >= lrv ~ "consider",
-            ci_lower_bound >= tv ~ "no-go",
+            ci_lower_bound < tv & ci_upper_bound < lrv ~ "Go",
+            ci_lower_bound < tv & ci_upper_bound >= lrv ~ "Consider",
+            ci_lower_bound >= tv ~ "No-Go",
             TRUE ~ NA_character_
           )
         }
@@ -455,13 +458,12 @@ bayesian_lalonde_decision <- function(endpoint, data_summary,
   if (parallel_enabled && !is.null(cl)) {
     cat("Parallel computation finished. Stopping cluster.\n")
     stopCluster(cl)
-    registerDoSEQ() # Register sequential backend after stopping cluster
+    registerDoSEQ()
   } else {
     cat("Sequential computation finished.\n")
   }
 
   # --- Post-processing ---
-  # Check if results_list is empty or contains only NULLs
   if (is.null(results_list) || nrow(results_list) == 0) {
     warning("No successful simulation results were returned by the parallel loop.")
 

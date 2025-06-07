@@ -39,6 +39,7 @@ data_gen_params_list <- lapply(apply(param_grid, 1, as.list),
 nsim = 10000
 bayes_results <- list()
 data_gen_params_h <- data_gen_params_list_h[[1]]
+
 for (i in seq_along(data_gen_params_list)) {
   start_time_i <- Sys.time()
 
@@ -153,8 +154,6 @@ for (i in seq_along(data_gen_params_list)) {
   cat("Total time for data_gen_params set", i, "=", round(difftime(end_time_i, start_time_i, units = "secs"), 2), "seconds\n\n")
 }
 
-# old <- readRDS("simulations/sim_OR_bayes_results_5_19.rds")
-# bayes_results <- c(old, bayes_results)
 saveRDS(bayes_results, file = "simulations/sim_OR_bayes_results.rds")
 
 
