@@ -29,6 +29,8 @@
 #'   Historical arm data (e.g., `control_h.n`, `treatment_h.count`) are optional.
 #' @param settings A data frame (optional). Contains the settings for the simulation
 #'   run. If provided, it will be combined with the results.
+#' @param verbose A logical value. If `TRUE` (default), the function prints
+#'   progress messages and warnings to the console.
 #' @param prior_params A named list. Contains prior distribution and borrowing
 #'   parameters for each arm (treatment and control, potentially historical).
 #'   Names must follow the convention `[arm_name].[parameter]`, matching the
@@ -88,7 +90,7 @@
 #'   `RBesT::pmixdiff`, `RBesT::qmixdiff`
 #'
 #' @export
-bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL,
+bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, verbose = TRUE,
                                       prior_params, lrv = 0, tv = 0, fgr = 0.2, fsr = 0.1, arm_names,
                                       posterior_infer = TRUE, Lalonde_decision = TRUE,
                                       EXP_TRANSFORM = FALSE) {
@@ -101,10 +103,7 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL,
   if (!is.data.frame(data_summary)) {
     stop("Input 'data_summary' must be a data frame.")
   }
-
   is_simulation <- "nsim" %in% names(data_summary) && length(unique(data_summary$nsim)) > 1
-
-  # If not a simulation, ensure only one row of data is present
   if (!is_simulation && nrow(data_summary) > 1) {
     warning("`data_summary` has more than one row but is not a simulation (no `nsim` column or only one `nsim` value). Only the first row will be used for analysis.")
     data_summary <- data_summary[1, , drop = FALSE]
@@ -113,7 +112,9 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL,
   if (!"nsim" %in% names(data_summary)) {
     data_summary$nsim <- 1
   }
-
+  if (!is.logical(verbose) || length(verbose) != 1) {
+    stop("Input 'verbose' must be a single logical value (TRUE or FALSE).")
+  }
   if (!is.list(prior_params) || is.null(names(prior_params))) {
     stop("Input 'prior_params' must be a named list.")
   }
@@ -156,7 +157,7 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL,
     ncore <- if (is_restricted) 2 else max(1, parallel::detectCores() - 1)
     cl <- tryCatch({
       parallel::makeCluster(ncore)
-      cat(sprintf("Setting up parallel backend with %d cores.\n", ncore))
+      if (verbose) cat(sprintf("Setting up parallel backend with %d cores.\n", ncore))
     }, error = function(e) {
       warning(paste("Could not create parallel cluster with", ncore, "cores. Falling back to sequential processing:", e$message))
       return(NULL)
@@ -183,12 +184,11 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL,
       })
 
       doParallel::registerDoParallel(cl)
-      on.exit(parallel::stopCluster(cl))
-      cat("Cluster setup complete. Starting parallel computation...\n")
+      if (verbose) cat("Cluster setup complete. Starting parallel computation...\n")
       parallel_enabled <- TRUE
     } else {
       foreach::registerDoSEQ()
-      cat("Proceeding with sequential computation.\n")
+      if (verbose) cat("Proceeding with sequential computation.\n")
       parallel_enabled <- FALSE
     }
   } else {
@@ -211,45 +211,41 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL,
 
     # Extract arm data using prefixes defined by arm_names
     arm_data_list <- list()
-    all_params_found <- TRUE # Flag to check if all expected params for current arms are found
-    for (arm_nm in c("treatment", "control")) { # Assuming 'treatment' and 'control' current arms always exist
+    all_params_found <- TRUE
+    for (arm_nm in c("treatment", "control")) {
       prefix <- paste0(arm_nm, ".")
       arm_cols <- names(current_sim_data_dt)[startsWith(names(current_sim_data_dt), prefix)]
       if (length(arm_cols) > 0) {
-        # Remove prefix for posterior_distribution
         arm_data <- setNames(as.list(current_sim_data_dt[, .SD, .SDcols = arm_cols][1,]), sub(prefix, "", arm_cols))
         arm_data_list[[arm_nm]] <- arm_data
 
-        # Check if required parameters for the endpoint are present in the extracted data
         required_data_params <- if (endpoint == "continuous") c("n", "mu_hat", "s") else c("n", "count")
         if (!all(required_data_params %in% names(arm_data))) {
           warning(paste("Missing required data parameters for arm '", arm_nm, "' for nsim =", nrep_val,
                         ". Expected:", paste(required_data_params, collapse = ", "),
                         ". Found:", paste(names(arm_data), collapse = ", "), sep=""))
-          all_params_found <- FALSE # Mark as missing
+          all_params_found <- FALSE
           break
         }
       } else {
         warning(paste("Missing current data columns for arm '", arm_nm, "' for nsim =", nrep_val))
-        all_params_found <- FALSE # Mark as missing
+        all_params_found <- FALSE
         break
       }
     }
 
     # Check for historical arms if listed in arm_names
     historical_data_list <- list()
-    for (arm_nm in c("treatment_h", "control_h")) { # Assuming these are the only possible historical prefixes
-      if (arm_nm %in% arm_names) { # Only look if the historical arm is expected
+    for (arm_nm in c("treatment_h", "control_h")) {
+      if (arm_nm %in% arm_names) {
         prefix <- paste0(arm_nm, ".")
         arm_cols <- names(current_sim_data_dt)[startsWith(names(current_sim_data_dt), prefix)]
         if (length(arm_cols) > 0) {
           historical_data_list[[arm_nm]] <- setNames(as.list(current_sim_data_dt[, .SD, .SDcols = arm_cols][1,]), sub(prefix, "", arm_cols))
         } else {
-          cat("check1")
           historical_data_list[[arm_nm]] <- NULL
         }
       } else {
-        cat("check2")
         historical_data_list[[arm_nm]] <- NULL
       }
     }
@@ -400,7 +396,7 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL,
           !anyNA(post_prob_i[, c("pr_t", "pr_l")]) &&
           !anyNA(lalonde_criteria_i[, c("compare_ci_l_lalonde", "compare_ci_u_lalonde")])) {
 
-        cat("Start making decisions based on Lalonde framework.\n")
+        if (verbose) cat("Start making decisions based on Lalonde framework.\n")
 
         # Probability Decision
         sum_probs <- post_prob_i$pr_m + post_prob_i$pr_l + post_prob_i$pr_t
@@ -443,24 +439,23 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL,
     }
 
     # 6. Combine all results for this simulation into a single row data.table
-    # Ensure all components are data.frames or data.tables before cbind/rbindlist
     result_df_i <- data.table::as.data.table(cbind(
-      t(as.data.frame(params_results)), # Transpose basic results
+      current_sim_data_dt,
+      t(as.data.frame(params_results)),
       as.data.frame(post_est_ci_i),
       as.data.frame(lalonde_criteria_i),
       as.data.frame(post_prob_i),
-      data.frame(decision_pr = decision_pr, decision_ci = decision_ci) # Add decisions
+      data.frame(decision_pr = decision_pr, decision_ci = decision_ci)
     ))
     result_df_i
   }
 
-  # Stop the cluster if it was created
   if (parallel_enabled && !is.null(cl)) {
-    cat("Parallel computation finished. Stopping cluster.\n")
+    if (verbose) cat("Parallel computation finished. Stopping cluster.\n")
     stopCluster(cl)
     registerDoSEQ()
   } else {
-    cat("Sequential computation finished.\n")
+    if (verbose) cat("Sequential computation finished.\n")
   }
 
   # --- Post-processing ---
@@ -498,35 +493,42 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL,
 
   }
 
-  numeric_cols_after_bind <- names(results_list)[sapply(results_list, is.numeric)]
+  if (!is.null(settings)) {
+    if (is.data.frame(settings) && nrow(settings) == 1) {
+      results_list <- cbind(settings, results_list)
+    } else {
+      warning("'settings' must be a single-row data frame. Ignoring.")
+    }
+  }
 
-  char_cols <- names(results_list)[sapply(results_list, is.character)]
-  decision_cols <- c("decision_pr", "decision_ci")
+  # numeric_cols_after_bind <- names(results_list)[sapply(results_list, is.numeric)]
+  #
+  # char_cols <- names(results_list)[sapply(results_list, is.character)]
+  # decision_cols <- c("decision_pr", "decision_ci")
+  #
+  # cols_to_numeric <- setdiff(numeric_cols_after_bind, "nsim")
+  # cols_to_character <- intersect(char_cols, decision_cols)
+  #
+  # results_list <- results_list %>%
+  #   mutate(across(all_of(cols_to_numeric), as.numeric)) %>%
+  #   mutate(across(all_of(setdiff(char_cols, decision_cols)), as.numeric))
 
-  cols_to_numeric <- setdiff(numeric_cols_after_bind, "nsim")
-  cols_to_character <- intersect(char_cols, decision_cols)
-
-  results_list <- results_list %>%
-    mutate(across(all_of(cols_to_numeric), as.numeric)) %>%
-    mutate(across(all_of(setdiff(char_cols, decision_cols)), as.numeric))
-
+  # Create the final list of data frames
   post_params_df <- results_list %>%
-    select(nsim, ends_with("_post"), ends_with(".w_prior")) %>%
-    as.data.frame()
+    select(any_of(c(names(settings), names(data_summary))), ends_with("_post"), ends_with(".w_prior"))
 
   post_est_ci_df <- results_list %>%
-    select(nsim, ends_with("_95ci")) %>%
-    as.data.frame()
+    select(any_of(c(names(settings), names(data_summary))), ends_with("_95ci"))
 
   post_inference_df <- results_list %>%
-    select(nsim, ends_with("_lalonde"), starts_with("pr_"), one_of(decision_cols)) %>%
-    as.data.frame()
+    select(any_of(c(names(settings), names(data_summary))), ends_with("_lalonde"), starts_with("pr_"), one_of(c("decision_pr", "decision_ci")))
 
-  cat("Function execution complete.\n")
 
-  return(list(post_params = data.table::as.data.table(post_params_df),
-              post_est_ci = data.table::as.data.table(post_est_ci_df),
-              post_inference = data.table::as.data.table(post_inference_df)))
+  if (verbose) cat("Function execution complete.\n")
+
+  return(list(post_params = as.data.frame(post_params_df),
+              post_est_ci = as.data.frame(post_est_ci_df),
+              post_inference = as.data.frame(post_inference_df)))
 }
 
 

@@ -7,6 +7,8 @@
 bayesian_lalonde_decision(
   endpoint,
   data_summary,
+  settings = NULL,
+  verbose = TRUE,
   prior_params,
   lrv = 0,
   tv = 0,
@@ -33,6 +35,12 @@ are \code{n} (sample size), \code{mu_hat} (sample mean), \code{s} (standard devi
 are \code{n} (sample size), \code{count} (number of responses/events).
 Historical arm data (e.g., \code{control_h.n}, \code{treatment_h.count}) are optional.
 }}
+
+\item{settings}{A data frame (optional). Contains the settings for the simulation
+run. If provided, it will be combined with the results.}
+
+\item{verbose}{A logical value. If \code{TRUE} (default), the function prints
+progress messages and warnings to the console.}
 
 \item{prior_params}{A named list. Contains prior distribution and borrowing
 parameters for each arm (treatment and control, potentially historical).
