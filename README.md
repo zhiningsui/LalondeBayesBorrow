@@ -19,57 +19,46 @@ devtools::install_github("zhiningsui/LalondeBayesBorrow")
 ```
 
 ## Getting Started: A Quick Example
-Here's a simple example of how to use the package to analyze a single dataset with a continuous endpoint.
+
+Here's a simple example of how to use the package to run a simulation and visualize the results.
+
 ```R
 library(LalondeBayesBorrow)
+library(dplyr)
+library(ggplot2)
 
-# 1. Prepare your data
-# For a single analysis, you just need a data frame with summary statistics.
-# Let's assume you have a treatment and a control arm.
-current_data <- data.frame(
-  treatment.n = 50,
-  treatment.mu_hat = 1.8,
-  treatment.s = 0.5,
-  control.n = 50,
-  control.mu_hat = 1.5,
-  control.s = 0.4
-)
+# 1. Set up your simulation parameters
+param_grid <- expand.grid(
+  trt_n = c(45, 60),
+  ctrl_p = seq(0.15, 0.45, 0.15),
+  stringsAsFactors = FALSE
+) %>%
+  mutate(ctrl_n = trt_n, trt_p = 0.2 + ctrl_p)
 
-# You can also include historical data to borrow from.
-historical_data <- data.frame(
-  control_h.n = 100,
-  control_h.mu_hat = 1.6,
-  control_h.s = 0.4
-)
+data_gen_params_list <- lapply(apply(param_grid, 1, as.list),
+                               create_data_gen_params, endpoint = "binary")
 
-# 2. Set up your prior parameters
-# These parameters define the non-informative and informative priors.
-# We'll use a SAM prior, so we set `control.w = NULL`.
-prior_params <- list(
-  treatment.theta0 = 0,   # Non-informative prior mean for treatment
-  treatment.s0 = 100,     # Non-informative prior SD for treatment
-  control.theta0 = 1.6,   # Non-informative prior mean for control
-  control.s0 = 100,       # Non-informative prior SD for control
-  control.w = NULL,       # Use SAM prior for weight
-  control.delta_SAM = 0.2,  # Clinically significant difference for SAM
-  control.ess_h = 50      # Effective sample size from historical data
-)
+# Define historical data and other parameters
+data_gen_params_h <- list(control_h = list(name = "control_h", n = 180, p = 0.3))
+prior_params <- list(control.delta_SAM = 0.1, control.ess_h = 45)
+nsim <- 1000 # Use a larger number for more stable results
 
-# 3. Run the analysis
-# The main function is `lalonde_analysis`.
-results <- lalonde_analysis(
-  endpoint = "continuous",
-  current_data = current_data,
-  historical_data = historical_data,
+# 2. Run the simulation
+bayes_results <- LalondeBayesBorrow::run_simulation(
+  nsim = nsim,
+  data_gen_params_list = data_gen_params_list,
+  data_gen_params_h = data_gen_params_h,
   prior_params = prior_params,
-  lrv = 0,         # Lower reference value
-  tv = 0.2,        # Target value
-  fgr = 0.2,       # False Go Rate
-  fsr = 0.1        # False Stop Rate
+  endpoint = "binary",
+  lrv = 0.1,
+  tv = 0.2
 )
 
-# 4. View the results
-# The results list contains the posterior inference and the go/no-go decision.
-print(results$post_inference)
-print(results$decision)
+# 3. Visualize the results
+# Plot the operating characteristics (Go/Consider/No-Go probabilities)
+plot_oc(bayes_results$oc_all, x_var = "control.p", facet_vars = c("trt_n", "true_value.compare_true"))
+
+# Plot the risk profile (Type I and Type II errors)
+plot_risk(bayes_results$oc_all, x_var = "control.p.diff", facet_vars = "trt_n")
 ```
+
