@@ -1,40 +1,48 @@
 rm(list = ls())
-library(LalondeBayesBorrow)
-library(tidyverse)
 library(kableExtra)
+library(LalondeBayesBorrow)
+library(dplyr)
+library(tidyverse)
 
-# Simulations -------------------------------------------------------------
+# Simulation ------------------------------------------------------------
 
+# Define historical control configurations
 param_grid_h <- expand.grid(
   ctrl_h_n = 180,
-  ctrl_h_p = 0.3,
+  ctrl_h_mu = -0.2,
+  ctrl_h_sigma = 0.4,
   stringsAsFactors = FALSE
 )
 
+# Define current trial configurations
 param_grid1 <- expand.grid(
   trt_n = c(45),
-  ctrl_p = seq(0.1, 0.5, 0.05),
+  ctrl_mu = seq(-0.4, 0, 0.05),
+  trt_sigma = 0.4,
+  ctrl_sigma = 0.4,
   stringsAsFactors = FALSE
 ) %>%
   mutate(ctrl_n = trt_n,
-         trt_p = 0.1 + ctrl_p)
+         trt_mu = ctrl_mu - 0.1)
 
 param_grid2 <- expand.grid(
   trt_n = c(45),
-  ctrl_p = seq(0.1, 0.5, 0.05),
+  ctrl_mu = seq(-0.4, 0, 0.05),
+  trt_sigma = 0.4,
+  ctrl_sigma = 0.4,
   stringsAsFactors = FALSE
 ) %>%
   mutate(ctrl_n = trt_n,
-         trt_p = 0.2 + ctrl_p)
-
+         trt_mu = ctrl_mu - 0.2)
 
 param_grid <- bind_rows(param_grid1, param_grid2)
 
 data_gen_params_list_h <- lapply(apply(param_grid_h, 1, as.list),
-                                 create_data_gen_params, endpoint = "binary")
+                                 create_data_gen_params, endpoint = "continuous")
 
 data_gen_params_list <- lapply(apply(param_grid, 1, as.list),
-                               create_data_gen_params, endpoint = "binary")
+                               create_data_gen_params, endpoint = "continuous")
+
 
 nsim = 10000
 bayes_results <- list()
@@ -50,41 +58,50 @@ for (i in seq_along(data_gen_params_list)) {
   for (arm in names(data_gen_params)) {
     cat("\t Arm:", arm, "\n")
     cat("\t  n:", data_gen_params[[arm]]$n, "\n")
-    cat("\t  p:", data_gen_params[[arm]]$p, "\n")
+    cat("\t  mu:", data_gen_params[[arm]]$mu, "\n")
+    cat("\t  sigma:", data_gen_params[[arm]]$sigma, "\n\n")
   }
   for (arm in names(data_gen_params_h)) {
     cat("\t Arm:", arm, "\n")
     cat("\t  n:", data_gen_params_h[[arm]]$n, "\n")
-    cat("\t  p:", data_gen_params_h[[arm]]$p, "\n")
+    cat("\t  mu:", data_gen_params_h[[arm]]$mu, "\n")
+    cat("\t  sigma:", data_gen_params_h[[arm]]$sigma, "\n\n")
   }
-
   n_arms <- length(data_gen_params)
   arm_names <- sapply(data_gen_params, function(x) x$name)
-  n_list <- sapply(data_gen_params, function(x) x$n)
-  prob_list <- sapply(data_gen_params, function(x) x$p)
+  n_list <- lapply(data_gen_params, function(x) x$n)
+  mu_list <- lapply(data_gen_params, function(x) x$mu)
+  sigma_list <- lapply(data_gen_params, function(x) x$sigma)
 
-  # --- Generate simulation dataset ---
-  data <- data_gen_binary(n_arms = n_arms, arm_names = arm_names, nsim = nsim,
-                          n_list = n_list, prob_list = prob_list, seed = 123)
+  # Generate simulation dataset
+  data <- data_gen_continuous(arm_names = arm_names,
+                              nsim = nsim, n_list = n_list,
+                              mu_list = mu_list, sigma_list = sigma_list,
+                              seed = 123)
 
-  # --- Obtain data summary for bayesian_lalonde_decision ---
+  settings <- c(list(true_value = data$true_value), data_gen_params, data_gen_params_h)
+  settings <- as.data.frame(t(unlist(settings)), stringsAsFactors = FALSE) %>%
+    mutate(
+      across(
+        .cols = -c(ends_with(".name")),
+        .fns = as.numeric
+      )
+    )
+
   summary <- data$summary
   summary_h <- data.frame(control_h.n = data_gen_params_h$control_h$n,
-                          control_h.count = data_gen_params_h$control_h$n * data_gen_params_h$control_h$p)
+                          control_h.mu_hat = data_gen_params_h$control_h$mu,
+                          control_h.s = data_gen_params_h$control_h$sigma / sqrt(data_gen_params_h$control_h$n))
   summary <- cbind(summary, summary_h)
 
-  # --- Define prior parameters ---
+  # Define Priors (w/w.o borrowing)
   prior_grid <- expand.grid(
-    treatment.a0 = 1,
-    treatment.b0 = 1,
-    treatment.a = 1,
-    treatment.b = 1,
+    treatment.theta0 = as.numeric(summary_h["control_h.mu_hat"]),
+    treatment.s0 = as.numeric(data_gen_params_h$control_h$sigma),
     treatment.w = 0,
-    control.a0 = 1,
-    control.b0 = 1,
-    control.a = 1,
-    control.b = 1,
-    control.w = NA, # allow SAM prior
+    control.theta0 = as.numeric(summary_h["control_h.mu_hat"]),
+    control.s0 = as.numeric(data_gen_params_h$control_h$sigma),
+    control.w = NA,
     control.delta_gate = c(0.1, 0.15),
     control.ess_h = c(45, 90, 180),
     stringsAsFactors = FALSE
@@ -101,19 +118,18 @@ for (i in seq_along(data_gen_params_list)) {
 
   # No borrowing
   prior_params_list[[length(prior_params_list)+1]] <- list(
-    treatment.a0 = 1,
-    treatment.b0 = 1,
-    treatment.a = 1,
-    treatment.b = 1,
+    treatment.theta0 = as.numeric(summary_h["control_h.mu_hat"]),
+    treatment.s0 = as.numeric(data_gen_params_h$control_h$sigma),
     treatment.w = 0,
-    control.a0 = 1,
-    control.b0 = 1,
-    control.a = 1,
-    control.b = 1,
-    control.w = 0
+    control.theta0 = as.numeric(summary_h["control_h.mu_hat"]),
+    control.s0 = as.numeric(data_gen_params_h$control_h$sigma),
+    control.w = 0,
+    stringsAsFactors = FALSE
   )
 
-  # --- Run analysis ---
+  cat("proportion of |conflict| < 0.1 =", sum(abs(summary$control.mu_hat-summary$control_h.mu_hat) < 0.1)/nsim, "\n")
+  cat("proportion of |conflict| < 0.15 =", sum(abs(summary$control.mu_hat-summary$control_h.mu_hat) < 0.15)/nsim, "\n")
+
   cat("Start Bayesian analysis.\n")
   for (k in seq_along(prior_params_list)) {
     start_time_k <- Sys.time()
@@ -130,65 +146,151 @@ for (i in seq_along(data_gen_params_list)) {
         .fns = as.numeric
       ))
 
-    post <- bayesian_lalonde_decision(endpoint = "binary",
+    post <- bayesian_lalonde_decision(endpoint = "continuous",
                                       data_summary = summary,
-                                      settings = settings,
                                       prior_params = prior_params,
+                                      settings = settings,
                                       arm_names = c(treatment = "treatment",
                                                     control = "control",
                                                     control_h = "control_h"),
-                                      lrv = 0.1, tv = 0.2,
+                                      lrv = -0.1, tv = -0.2,
                                       fgr = 0.2, fsr = 0.1,
                                       posterior_infer = T,
-                                      Lalonde_decision = T,
-                                      verbose = F)
+                                      Lalonde_decision = T)
 
-    post$metrics_post_dist <- cbind(settings,
-                                    calc_post_dist_metrics(endpoint = "OR",
-                                                     true_value = post$post_est_ci$true_value.compare_true,
-                                                     post_est_ci = post$post_est_ci))
+    post$metrics_post_dist <- cbind(settings, calc_post_dist_metrics(endpoint = "continuous",
+                                                     true_value = data$true_value$compare_true,
+                                                     post$post_est_ci))
 
     bayes_results[[length(bayes_results)+1]] <- post
 
     end_time_k <- Sys.time()
     cat("Time for Bayesian analysis with prior parameter list", k, "=", round(difftime(end_time_k, start_time_k, units = "secs"), 2), "seconds\n\n")
   }
+
   end_time_i <- Sys.time()
   cat("Total time for data_gen_params set", i, "=", round(difftime(end_time_i, start_time_i, units = "secs"), 2), "seconds\n\n")
 }
 
-saveRDS(bayes_results, file = "simulations/sim_OR_bayes_results_new.rds")
+saveRDS(bayes_results, file = "simulations/sim_DpR_bayes_results.rds")
+
+post_params_all <- data.frame()
+post_est_ci_all <- data.frame()
+post_inference_all <- data.frame()
+metrics_post_dist_all <- data.frame()
+oc_all <- data.frame()
+data_summary_all <- data.frame()
+for (i in seq_along(bayes_results)) {
+  res <- bayes_results[[i]]
+  setting <- res$settings
+  post_params <- cbind(setting, res$post_params)
+  post_est_ci <- cbind(setting, res$post_est_ci)
+  post_inference <- cbind(setting, res$post_inference)
+  metrics_post_dist <- cbind(setting, res$metrics_post_dist)
+
+  post_inference$decision_pr <- ifelse(is.na(post_inference$decision_pr), post_inference$decision_ci, post_inference$decision_pr)
+  post_inference$decision_ci <- ifelse(is.na(post_inference$decision_ci), post_inference$decision_pr, post_inference$decision_ci)
+
+  oc <- cbind(setting, obtain_oc(post_inference))
+
+  data_summary_all <- bind_rows(data_summary_all, res$data_summary)
+  post_params_all <- bind_rows(post_params_all, cbind(i, post_params))
+  post_est_ci_all <- bind_rows(post_est_ci_all, cbind(i, post_est_ci))
+  post_inference_all <- bind_rows(post_inference_all, cbind(i, post_inference))
+  metrics_post_dist_all <- bind_rows(metrics_post_dist_all, cbind(i, metrics_post_dist))
+  oc_all <- bind_rows(oc_all, cbind(i, oc))
+}
+
+bayes_results_all <- list(
+  data_summary_all = data_summary_all,
+  metrics_post_dist_all = metrics_post_dist_all,
+  post_params_all = post_params_all,
+  post_est_ci_all = post_est_ci_all,
+  post_inference_all = post_inference_all,
+  oc_all = oc_all
+)
+
+saveRDS(bayes_results_all, "simulations/sim_DpR_bayes_results_df.rds")
 
 
-results <- process_sim_results(bayes_results)
-
-saveRDS(results, "simulations/sim_OR_bayes_results_df_new.rds")
 
 # Analysis ----------------------------------------------------------------
 
-results <- readRDS("simulations/sim_OR_bayes_results_df_new.rds")
+bayes_results_all <- readRDS("simulations/sim_DpR_bayes_results_df.rds")
 
 # + Generate summary table --------------------------------------
 
-# Create the summary table for PMD
-pmd_summary <- create_pmd_summary(post_inference_all = results$post_inference_all)
+post_inference_all <-  bayes_results_all$post_inference_all %>%
+  mutate(borrowing = ifelse(is.na(control.w), "Borrowing: Yes", "Borrowing: No"),
+         gate = ifelse(is.na(control.delta_gate), "Gated Control: No", "Gated Control: Yes"),
+         control.mu.diff = control.mu - control_h.mu) %>%
+  select("nsim", "borrowing", "gate",
+         "true_value.compare_true",
+         "control.delta_SAM", "control.ess_h",
+         "control.mu",
+         "est2_lalonde") %>%
+  distinct() %>%
+  subset(gate == "Gated Control: Yes") %>%
+  pivot_wider(names_from = borrowing, values_from = est2_lalonde) %>%
+  mutate(pmd = `Borrowing: Yes` - `Borrowing: No`) %>%
+  select(-c(`Borrowing: Yes`, `Borrowing: No`, true_value.compare_true))
 
-# Create Table 2
-pmd_tab <- pmd_summary %>%
-  pivot_longer(c(mean_pmd, sd_pmd)) %>%
-  select(-control.delta_gate) %>%
-  pivot_wider(names_from = c(control.delta_SAM, control.ess_h),
+
+# Summary statistics of PMD
+metrics_tab <- post_inference_all %>%
+  group_by(gate, control.delta_SAM, control.ess_h, control.mu) %>%
+  summarize(mean_pmd = mean(pmd),
+            sd_pmd = sd(pmd),
+            .groups = "drop")
+
+# risks
+risk_df <- bayes_results_all$oc_all %>%
+  mutate(borrowing = ifelse(is.na(control.w), "Borrowing: Yes", "Borrowing: No"),
+         gate = ifelse(is.na(control.delta_gate), "Gated Control: No", "Gated Control: Yes"),
+         control.mu.diff = control.mu - control_h.mu) %>%
+  filter(true_value.compare_true %in% c(-0.1, -0.2),
+         decision_pr %in% c("go", "no-go")) %>%
+  mutate(
+    CorrectLabel = case_when(
+      true_value.compare_true == -0.2 & decision_pr == "go" ~ "CGR",
+      true_value.compare_true == -0.1 & decision_pr == "no-go" ~ "CSR",
+      TRUE ~ NA_character_
+    ),
+    RiskLabel = case_when(
+      true_value.compare_true == -0.1 & decision_pr == "go" ~ "FGR",
+      true_value.compare_true == -0.2 & decision_pr == "no-go" ~ "FSR",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  pivot_longer(cols = c(CorrectLabel, RiskLabel), names_to = "type", values_to = "label") %>%
+  filter(!is.na(label)) %>%
+  group_by(gate, borrowing, control.delta_SAM, control.ess_h, control.mu, label) %>%
+  summarize(prop = mean(proportion_pr), .groups = "drop") %>%
+  pivot_wider(names_from = label, values_from = prop)
+
+metrics_tab <- merge(metrics_tab, risk_df,
+                     by = c("gate", "control.delta_SAM", "control.ess_h","control.mu"),
+                     all = TRUE)
+
+metrics_tab_1 <- metrics_tab %>%
+  mutate(mean_pmd = ifelse(borrowing == "Borrowing: No", NA, mean_pmd),
+         sd_pmd = ifelse(borrowing == "Borrowing: No", NA, sd_pmd)) %>%
+  pivot_longer(c(FGR, FSR, CGR, CSR, mean_pmd, sd_pmd)) %>%
+  subset(gate == "Gated Control: Yes" & control.delta_SAM != 0.05) %>%
+  pivot_wider(names_from = c(borrowing, control.delta_SAM, control.ess_h),
               values_from = value, names_sort = T) %>%
-  mutate(name = factor(name, levels = c("mean_pmd", "sd_pmd"))) %>%
-  select(c(12, 3, 13:18)) %>%
-  arrange(name, control.p)
+  mutate(name = factor(name, levels = c("FGR", "FSR", "CGR", "CSR", "mean_pmd", "sd_pmd"))) %>%
+  select(c(3,2,10:15)) %>%
+  arrange(name, control.mu) %>%
+  subset(name %in% c("mean_pmd", "sd_pmd"))
 
-kbl(pmd_tab,
+
+kbl(metrics_tab_1,
     escape = F,
-    # format = "latex",
+    format = "latex",
     row.names = FALSE,
     digits = 4,
-    col.names = c("Metric", "control.p",
+    col.names = c("Metric", "control.mu",
                   rep(c("45", "90", "180"), 2))) %>%
   kable_styling(bootstrap_options = c("condensed"), full_width = FALSE) %>%
   kable_classic(full_width = FALSE) %>%
@@ -200,36 +302,11 @@ kbl(pmd_tab,
 
 # + Visualize risks -------------------------------------------------------
 
-risk_df <- bayes_results_all$oc_all %>%
-  mutate(borrowing = ifelse(is.na(control.w), "Borrowing: Yes", "Borrowing: No"),
-         gate = ifelse(is.na(control.delta_gate), "Gated Control: No", "Gated Control: Yes"),
-         control.p.diff = control.p - control_h.p) %>%
-  filter(true_value.compare_true %in% c(0.1, 0.2),
-         decision_pr %in% c("go", "no-go")) %>%
-  mutate(
-    CorrectLabel = case_when(
-      true_value.compare_true == 0.2 & decision_pr == "go" ~ "CGR",
-      true_value.compare_true == 0.1 & decision_pr == "no-go" ~ "CSR",
-      TRUE ~ NA_character_
-    ),
-    RiskLabel = case_when(
-      true_value.compare_true == 0.1 & decision_pr == "go" ~ "FGR",
-      true_value.compare_true == 0.2 & decision_pr == "no-go" ~ "FSR",
-      TRUE ~ NA_character_
-    )
-  ) %>%
-  pivot_longer(cols = c(CorrectLabel, RiskLabel), names_to = "type", values_to = "label") %>%
-  filter(!is.na(label)) %>%
-  group_by(gate, borrowing, control.delta_SAM, control.ess_h, control.p, label) %>%
-  summarize(prop = mean(proportion_pr), .groups = "drop") %>%
-  pivot_wider(names_from = label, values_from = prop)
-
-
 risk_df1 <- risk_df %>%
   pivot_longer(c(FSR, FGR)) %>%
   subset(gate == "Gated Control: Yes" & control.delta_SAM !=0.05) %>%
-  mutate(control.p = factor(control.p,
-                            levels = c("0.1", "0.15", "0.2", "0.25", "0.3", "0.35", "0.4", "0.45", "0.5")),
+  mutate(control.mu = factor(control.mu,
+                             levels = c("-0.4", "-0.35", "-0.3", "-0.25", "-0.2", "-0.15", "-0.1", "-0.05", "0")),
          control.delta_SAM = factor(control.delta_SAM,
                                     levels = c("0.1", "0.15"),
                                     labels = c(expression(paste(delta, " = 0.1")),
@@ -250,7 +327,7 @@ shade_df <- data.frame(
   ymax = Inf)
 
 p_risk_borrow <- ggplot(risk_df1 %>% filter(borrowing == "Borrowing: Yes"),
-                        aes(x = control.p, y = value, color = name)) +
+                        aes(x = control.mu, y = value, color = name)) +
   geom_point(size = 2) +
   geom_rect(
     data = shade_df,
@@ -264,7 +341,7 @@ p_risk_borrow <- ggplot(risk_df1 %>% filter(borrowing == "Borrowing: Yes"),
                                  control.delta_SAM = label_parsed)) +
   labs(y = "Risk Value",
        color = "") +
-  xlab(~ paste("Concurrent Control ORR (", theta[c], ")")) +
+  xlab(~ paste("Concurrent Control DpR Mean (", theta[c], ")")) +
   geom_hline(aes(yintercept = 0.2, color = "FGR"), linetype = "dashed") +  # Horizontal line for false go risk
   geom_hline(aes(yintercept = 0.1, color = "FSR"), linetype = "dashed") +
   theme_bw()+
@@ -281,14 +358,15 @@ p_risk_noborrow <- risk_df1 %>%
   subset(borrowing == "Borrowing: No") %>%
   select(-c(control.delta_SAM, control.ess_h)) %>%
   distinct() %>%
-  mutate(control.ess_h = factor(0, labels = expression(n[hc*","*e] == 0 * " (No Borrowing)"))) %>%
-  ggplot(aes(x = control.p, y = value, color = name)) +
+  mutate(control.delta_SAM = NA,
+         control.ess_h = factor(0, labels = expression(n[hc*","*e] == 0 * " (No Borrowing)"))) %>%
+  ggplot(aes(x = control.mu, y = value, color = name)) +
   geom_point(size = 2) +
   facet_grid( ~ control.ess_h,
               labeller = labeller(control.ess_h = label_parsed)) +
   labs(y = "Risk Value",
        color = "") +
-  xlab(~ paste("Concurrent Control ORR (", theta[c], ")")) +
+  xlab(~ paste("Concurrent Control DpR Mean (", theta[c], ")")) +
   geom_hline(aes(yintercept = 0.2, color = "FGR"), linetype = "dashed") +  # Horizontal line for false go risk
   geom_hline(aes(yintercept = 0.1, color = "FSR"), linetype = "dashed") +
   theme_bw()+
@@ -306,14 +384,11 @@ library(patchwork)
 top <- p_risk_noborrow + guide_area() +
   plot_layout(widths = c(1, 2), guides = 'collect')
 
-# p_risk <- top / (p_risk_borrow + theme(legend.position = "none"))  +
-#   plot_layout(heights = c(1, 2), guides = 'collect', axis_titles = 'collect')
-
 p_risk <- (p_risk_borrow + theme(legend.position = "none")) / top  +
   plot_layout(heights = c(2, 1), guides = 'collect', axis_titles = 'collect')
 
+ggsave( "simulations/sim_DpR_unconstrained_conflict_vs_risk_paper.jpg", p_risk, width = 12, height = 8)
 
-ggsave( "simulations/sim_OR_conflict_vs_risk_paper.jpg", p_risk, width = 12, height = 8)
 
 # + Generate plots for OC -------------------------------------------------
 
@@ -323,11 +398,13 @@ oc_df <- bayes_results_all$oc_all %>%
   select("i", "borrowing",
          "true_value.compare_true",
          "control.delta_SAM", "control.ess_h",
-         "control.p",
+         "control.mu",
          "decision_pr", "proportion_pr", "proportion_ci") %>%
   mutate(decision_pr = factor(decision_pr, levels = c("no-go", "consider", "go"),
                               labels = c("No-Go", "Consider", "Go")),
-         true_value.compare_true = ifelse(true_value.compare_true == 0.2, "0.2 (TV)", "0.1 (LRV)"))
+         true_value.compare_true = ifelse(true_value.compare_true == -0.2, "-0.2 (TV)", "-0.1 (LRV)"),
+         control.mu = factor(control.mu,
+                             levels = c("-0.4", "-0.35", "-0.3", "-0.25", "-0.2", "-0.15", "-0.1", "-0.05", "0")))
 
 
 oc_new <- data.frame()
@@ -342,10 +419,11 @@ for (i in seq(1, nrow(oc_tmp), 3)) {
 
 oc_new <- oc_new[, c("true_value.compare_true", "control.delta_SAM", "control.ess_h",
                      "borrowing",
-                     "control.p",
+                     "control.mu",
                      "decision_pr", "proportion_pr", "label_ypos")]
 
 oc_borrow <- oc_new %>% subset(borrowing == "Borrowing: Yes")
+
 oc_noborrow <- oc_new %>%
   subset(borrowing == "Borrowing: No") %>%
   select(-c(control.delta_SAM, control.ess_h)) %>%
@@ -363,8 +441,6 @@ oc_new$control.ess_h <- factor(as.character(oc_new$control.ess_h),
                                  expression(n[hc*","*e] == 180)
                                ))
 
-oc_new$control.p <- factor(oc_new$control.p,
-                           levels = c("0.1", "0.15", "0.2", "0.25", "0.3", "0.35", "0.4", "0.45", "0.5"))
 oc_new$true_value.compare_true <- factor(oc_new$true_value.compare_true)
 oc_new$control.delta_SAM <- factor(oc_new$control.delta_SAM,
                                    levels = c("0.1", "0.15"),
@@ -388,7 +464,7 @@ for (i in levels(oc_borrow$true_value.compare_true)) {
   oc_tmp_borrow2b <- oc_tmp_borrow %>% filter(control.ess_h == levels(oc_new$control.ess_h)[4])
 
   p_noborrow <- ggplot(oc_tmp_noborrow,
-                       aes(x = control.p, y = proportion_pr, fill = decision_pr)) +
+                       aes(x = control.mu, y = proportion_pr, fill = decision_pr)) +
     geom_bar(stat = "identity", width = 1) +
     geom_text(aes(y = label_ypos, label = scales::percent(proportion_pr, 0.01)),
               vjust = 1.6, fontface = "bold", size = 4.2) +
@@ -396,7 +472,7 @@ for (i in levels(oc_borrow$true_value.compare_true)) {
     facet_grid( ~ control.ess_h,
                 labeller = labeller(control.ess_h = label_parsed)) +
     labs(y = "Probability") +
-    xlab(~ paste("Concurrent Control ORR (", theta[c], ")")) +
+    xlab(~ paste("Concurrent Control DpR Mean (", theta[c], ")")) +
     theme_bw(base_size = 14) +
     theme(legend.position = "none",
           strip.text = element_text(size = 16),
@@ -406,7 +482,7 @@ for (i in levels(oc_borrow$true_value.compare_true)) {
           axis.text = element_text(size = 15))
 
   make_plot <- function(data, legend_pos = "none") {
-    ggplot(data, aes(x = control.p, y = proportion_pr, fill = decision_pr)) +
+    ggplot(data, aes(x = control.mu, y = proportion_pr, fill = decision_pr)) +
       geom_bar(stat = "identity", width = 1) +
       geom_text(aes(y = label_ypos, label = scales::percent(proportion_pr, 0.01)),
                 vjust = 1.6, fontface = "bold", size = 4.2) +
@@ -415,7 +491,7 @@ for (i in levels(oc_borrow$true_value.compare_true)) {
                  labeller = labeller(control.ess_h = label_parsed,
                                      control.delta_SAM = label_parsed)) +
       labs(y = "Probability") +
-      xlab(~ paste("Concurrent Control ORR (", theta[c], ")")) +
+      xlab(~ paste("Concurrent Control DpR Mean (", theta[c], ")")) +
       theme_bw(base_size = 14) +
       theme(legend.position = legend_pos,
             strip.text = element_text(size = 16),
@@ -440,6 +516,7 @@ for (i in levels(oc_borrow$true_value.compare_true)) {
   DE
   DE
   "
+
   p_combined <- p_noborrow + guide_area() + p_borrow1 + p_borrow2a + p_borrow2b +
     plot_layout(design = layout, guides = "collect") +
     plot_annotation(title = bquote(Delta == .(i))) &
@@ -451,7 +528,11 @@ for (i in levels(oc_borrow$true_value.compare_true)) {
 library(patchwork)
 p_oc <- wrap_plots(p_list, ncol = 1)
 
-ggsave("simulations/sim_OR_zone_size_paper.jpg", p_oc, width = 15, height = 22)
+ggsave("simulations/sim_DpR_unconstrained_zone_size_paper.jpg", p_oc, width = 15, height = 22)
+
+
+
+
 
 
 
