@@ -153,46 +153,6 @@ saveRDS(bayes_results, file = "simulations/casestudy_OR_bayes_results_1.rds")
 bayes_results <- readRDS(file = "simulations/casestudy_OR_bayes_results.rds")
 
 results <- process_sim_results(bayes_results)
-results
-
-
-post_params_all <- data.frame()
-post_est_ci_all <- data.frame()
-post_inference_all <- data.frame()
-metrics_post_dist_all <- data.frame()
-oc_all <- data.frame()
-data_summary_all <- data.frame()
-for (i in seq_along(bayes_results)) {
-  res <- bayes_results[[i]]
-  setting <- res$settings
-  post_params <- cbind(setting, res$post_params)
-  post_est_ci <- cbind(setting, res$post_est_ci)
-  post_inference <- cbind(setting, res$post_inference)
-  metrics_post_dist <- cbind(setting, res$metrics_post_dist)
-
-  post_inference$decision_pr <- ifelse(is.na(post_inference$decision_pr), post_inference$decision_ci, post_inference$decision_pr)
-  post_inference$decision_ci <- ifelse(is.na(post_inference$decision_ci), post_inference$decision_pr, post_inference$decision_ci)
-
-  oc <- cbind(setting, obtain_oc(post_inference))
-
-  data_summary_all <- bind_rows(data_summary_all, res$data_summary)
-  post_params_all <- bind_rows(post_params_all, cbind(i, post_params))
-  post_est_ci_all <- bind_rows(post_est_ci_all, cbind(i, post_est_ci))
-  post_inference_all <- bind_rows(post_inference_all, cbind(i, post_inference))
-  metrics_post_dist_all <- bind_rows(metrics_post_dist_all, cbind(i, metrics_post_dist))
-  oc_all <- bind_rows(oc_all, cbind(i, oc))
-}
-
-bayes_results_all <- list(
-  data_summary_all = data_summary_all,
-  metrics_post_dist_all = metrics_post_dist_all,
-  post_params_all = post_params_all,
-  post_est_ci_all = post_est_ci_all,
-  post_inference_all = post_inference_all,
-  oc_all = oc_all
-)
-
-saveRDS(bayes_results_all, "simulations/casestudy_OR_bayes_results_df_1.rds")
 
 
 # + Visualization ---------------------------------------------------------
@@ -477,6 +437,7 @@ for (k in seq_along(prior_params_list)) {
 
   post <- bayesian_lalonde_decision(endpoint = "binary",
                                     data_summary = summary,
+                                    settings = settings,
                                     prior_params = prior_params,
                                     arm_names = c(treatment = "treatment",
                                                   control = "control",
@@ -486,143 +447,14 @@ for (k in seq_along(prior_params_list)) {
                                     posterior_infer = T,
                                     Lalonde_decision = T)
 
-
-  post$settings <- settings
-  post$data_summary <- cbind(i, summary)
-
   bayes_results[[length(bayes_results)+1]] <- post
 }
 
 
-post_params_all <- data.frame()
-post_est_ci_all <- data.frame()
-post_inference_all <- data.frame()
-data_summary_all <- data.frame()
-for (i in seq_along(bayes_results)) {
-  res <- bayes_results[[i]]
-  setting <- res$settings
-  post_params <- cbind(setting, res$post_params)
-  post_est_ci <- cbind(setting, res$post_est_ci)
-  post_inference <- cbind(setting, res$post_inference)
+results <- process_sim_results(bayes_results)
 
-  post_inference$decision_pr <- ifelse(is.na(post_inference$decision_pr), post_inference$decision_ci, post_inference$decision_pr)
-  post_inference$decision_ci <- ifelse(is.na(post_inference$decision_ci), post_inference$decision_pr, post_inference$decision_ci)
-
-  data_summary_all <- bind_rows(data_summary_all, res$data_summary)
-  post_params_all <- bind_rows(post_params_all, cbind(i, post_params))
-  post_est_ci_all <- bind_rows(post_est_ci_all, cbind(i, post_est_ci))
-  post_inference_all <- bind_rows(post_inference_all, cbind(i, post_inference))
-}
-
-
-post_params_all <- post_params_all %>%
-  mutate(borrow = ifelse(is.na(control.w), "Yes", "No"))
-
-post_params_1 <- post_params_all[post_params_all$control.ess_h == 30, ]
-post_params_2 <- post_params_all[post_params_all$control.ess_h == 60, ]
-
-post_inference_1 <- post_inference_all[post_inference_all$control.ess_h == 30, ]
-post_inference_2 <- post_inference_all[post_inference_all$control.ess_h == 60, ]
-
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-
-#   bm <- RBesT::mixbeta(inf = c(post_params_borrow$control.w_post, post_params_borrow$control.a1_post, post_params_borrow$control.b1_post),
-#                 inf2 = c(1 - post_params_borrow$control.w_post, post_params_borrow$control.a2_post, post_params_borrow$control.b2_post))
-#
-# library(RBesT)
-#
-# plot(bm)
-
-plot_posterior <- function(post_params, post_inference, data_summary) {
-  x_vals <- seq(0, 1, length.out = 1000)
-
-  # Extract parameter values
-  post_params_borrow <- post_params %>% filter(borrow == "Yes")
-  post_params_noborrow <- post_params %>% filter(borrow == "No")
-
-  # Compute densities
-  df <- tibble(x = x_vals) %>%
-    mutate(
-      control_noborrow = dbeta(x, post_params_noborrow$control.a2_post, post_params_noborrow$control.b2_post),
-      treatment = dbeta(x, post_params_noborrow$treatment.a2_post, post_params_noborrow$treatment.b2_post),
-      control_borrow1 = dbeta(x, post_params_borrow$control.a1_post, post_params_borrow$control.b1_post),
-      control_borrow2 = dbeta(x, post_params_borrow$control.a2_post, post_params_borrow$control.b2_post),
-      control_mixture = post_params_borrow$control.w_post * control_borrow1 +
-        (1 - post_params_borrow$control.w_post) * control_borrow2
-    )
-
-  # Reshape to long format for ggplot
-  df_long <- df %>%
-    select(x, control_noborrow, control_mixture, treatment) %>%
-    pivot_longer(-x, names_to = "curve", values_to = "density") %>%
-    mutate(curve = recode(curve,
-                          control_noborrow = "Concurrent Control",
-                          control_mixture = "Hybrid Control (SAM Prior)",
-                          treatment = "Experimental Arm"))
-
-  # Define fill colors with transparency
-  fill_colors <- c(
-    "Concurrent Control" = rgb(0, 0, 1, 0.3),
-    "Hybrid Control (SAM Prior)" = rgb(1, 0, 0, 0.3),
-    "Experimental Arm" = rgb(0, 1, 0, 0.3)
-  )
-
-  line_colors <- c(
-    "Concurrent Control" = "blue",
-    "Hybrid Control (SAM Prior)" = "red",
-    "Experimental Arm" = "green"
-  )
-
-  # Get summary values
-  post_inference <- post_inference %>%
-    subset(is.na(control.w))
-  data_summary <- unique(data_summary)
-  n_trt <- data_summary$treatment.n
-  y_trt <- data_summary$treatment.count
-  n_ctrl <- data_summary$control.n
-  y_ctrl <- data_summary$control.count
-  n_ctrl_h <- data_summary$control_h.n
-  y_ctrl_h <- data_summary$control_h.count
-  decision <- post_inference$decision_pr
-
-  prob_text <- paste0(
-    "P(Minimal) = ", sprintf("%.3f", post_inference$pr_m),"\n",
-    "P(Lower) = ", sprintf("%.3f", post_inference$pr_l), "\n",
-    "P(Target) = ", sprintf("%.3f", post_inference$pr_t), "\n\n",
-    "Decision: ", stringr::str_to_title(decision)
-  )
-
-  # response_text <- paste0(
-  #   "Experimental: ", y_trt, "/", n_trt, "\n",
-  #   "Concurrent Control: ", y_ctrl, "/", n_ctrl, "\n",
-  #   "Historical Control: ", y_ctrl_h, "/", n_ctrl_h
-  # )
-
-  response_text <- paste0(
-    "Concurrent Control: ", y_ctrl, "/", n_ctrl
-    )
-
-  # Plot
-  ggplot(df_long, aes(x = x, y = density, fill = curve, color = curve)) +
-    geom_area(alpha = 0.3, position = "identity") +
-    geom_line(size = 1.2) +
-    scale_color_manual(values = line_colors) +
-    scale_fill_manual(values = fill_colors) +
-    labs(
-      title = response_text,
-      x = "ORR",
-      y = "Density",
-      color = "",
-      fill = ""
-    ) +
-    annotate("text", x = 0.98, y = max(df_long$density) * 0.9,
-             hjust = 1, vjust = 1, size = 4.5, fontface = "bold",
-             label = prob_text, color = "black") +
-    theme_minimal(base_size = 14) +
-    theme(plot.title = element_text(size = 14, face = "bold", hjust = 0))
-}
+post_params_all <- results$post_params_all
+post_inference_all <- results$post_inference_all
 
 post_params_1 <- post_params_all[post_params_all$control.ess_h == 30, ]
 post_params_2 <- post_params_all[post_params_all$control.ess_h == 60, ]
@@ -634,15 +466,19 @@ p1_list <- list()
 p2_list <- list()
 for(i in 1:3){
   p1_list[[i]] <- plot_posterior(post_params = post_params_1[post_params_1$nsim == i,],
-                                 post_inference = post_inference_1[post_inference_1$nsim == i,],
-                                 data_summary = data_summary_all[data_summary_all$nsim == i,])
+                                 post_inference = post_inference_1[post_inference_1$nsim == i & post_inference_1$borrow == "Yes", ],
+                                 endpoint = "binary",
+                                 title_format = "Concurrent Control: {control.count}/{control.n}")
 
-  p2_list[[i]] <- plot_posterior(post_params_2[post_params_2$nsim == i,],
-                                 post_inference_2[post_inference_2$nsim == i,],
-                                 data_summary = data_summary_all[data_summary_all$nsim == i,])
+
+
+  p2_list[[i]] <-  plot_posterior(post_params = post_params_2[post_params_2$nsim == i,],
+                                  post_inference = post_inference_2[post_inference_2$nsim == i & post_inference_2$borrow == "Yes", ],
+                                  endpoint = "binary",
+                                  title_format = "Concurrent Control: {control.count}/{control.n}")
 
 }
-
+library(patchwork)
 p1 <- wrap_plots(p1_list) +
   plot_layout(nrow = 1, guides = 'collect',
               axes = "collect") +
