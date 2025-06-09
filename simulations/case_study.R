@@ -394,8 +394,9 @@ for (i in seq_along(data_gen_params_list)) {
 
 
 saveRDS(bayes_results, file = "simulations/casestudy_OR_bayes_results_vary_Delta.rds")
-results <- process_sim_results(bayes_results)
 
+bayes_results <- readRDS(file = "simulations/casestudy_OR_bayes_results_vary_Delta.rds")
+results <- process_sim_results(bayes_results)
 
 oc_df <- results$oc_all %>%
   mutate(ess.ratio = ifelse(borrow == "Yes", control.ess_h / control.n, 0)) %>%
@@ -406,21 +407,9 @@ oc_df <- results$oc_all %>%
                                       expression(paste(n[t], ' : ', n[cc], ' : ', n[hc*','*e], ' = 2:1:2')))))
 
 
-plot_oc(oc_df, x_var = "treatment.p", facet_formula = ~ n_ratios)
-
-
-
-p2 <- ggplot(oc_df, aes(x = treatment.p, y = proportion_pr, fill = decision_pr)) +
-  geom_area(color = "black", linewidth = 0.1, position = "stack") +
-  scale_fill_manual(
-    values = c("No-Go" = "red", "Consider" = "#F0E442", "Go" = "#009E73"),
-    name = "Decision"
-  ) +
-  facet_grid(~ n_ratios,
-             labeller = label_parsed) +
+p2 <- plot_oc(oc_df, x_var = "treatment.p", facet_formula = ~ n_ratios, plot_type = "smooth") +
   labs(y = "Decision Probability", x = expression("Treatment ORR (" * theta[t] * ")")) +
-  scale_x_continuous(breaks= seq(0.22, 0.52, by = 0.05) ) +
-  theme_bw() +
+  scale_x_continuous(breaks= seq(0.22, 0.52, by = 0.05) )  +
   theme(
     legend.position = "bottom",
     title = element_text(size = 13),
@@ -431,33 +420,9 @@ p2 <- ggplot(oc_df, aes(x = treatment.p, y = proportion_pr, fill = decision_pr))
     strip.text = element_text(size = 12),
     panel.grid.minor = element_blank()
   )
+
 
 ggsave("simulations/casestudy_zone_size_vs_trt_orr.jpg", p2, width = 8, height = 3.5)
-
-
-p2 <- ggplot(oc_df, aes(x = factor(treatment.p), y = proportion_pr, fill = decision_pr)) +
-  geom_bar(stat = "identity", width = 1) +
-  scale_fill_manual(
-    values = c("No-Go" = "red", "Consider" = "#F0E442", "Go" = "#009E73"),
-    name = "Decision"
-  ) +
-  facet_grid(~ n_ratios,
-             labeller = label_parsed) +
-  labs(y = "Decision Probability", x = expression("Treatment ORR (" * theta[t] * ")")) +
-  theme_bw() +
-  theme(
-    legend.position = "bottom",
-    title = element_text(size = 13),
-    legend.title = element_text(size = 12),
-    legend.text = element_text(size = 11),
-    axis.title = element_text(size = 12),
-    axis.text = element_text(size = 10),
-    strip.text = element_text(size = 12),
-    panel.grid.minor = element_blank()
-  )
-
-ggsave("simulations/casestudy_zone_size_vs_trt_orr2.jpg", p2, width = 8, height = 3.5)
-
 
 
 # 3. Real Analysis (Without Conflict) -------------------------------------

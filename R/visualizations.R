@@ -37,7 +37,7 @@
 #' #   )
 #' # )
 plot_oc <- function(oc_data, x_var, facet_formula = NULL, plot_type = "stepwise", ...) {
-  # Ensure the decision column is a factor with a specific order for consistent plotting
+  
   if ("decision_pr" %in% names(oc_data)) {
     oc_data$decision_pr <- factor(oc_data$decision_pr, levels = c("No-Go", "Consider", "Go"))
     y_var <- "proportion_pr"
@@ -57,10 +57,16 @@ plot_oc <- function(oc_data, x_var, facet_formula = NULL, plot_type = "stepwise"
   }
 
 
-  p <- ggplot(oc_new, aes_string(x = x_var, y = y_var, fill = fill_var)) +
-    geom_bar(stat = "identity", width = 1) +
-    geom_text(aes(y = label_ypos, label = scales::percent(proportion_pr, 0.01)),
-              vjust = 1.6, fontface = "bold", size = 4.2) +
+  if (plot_type == "stepwise") {
+    p <- ggplot(oc_new, aes_string(x = x_var, y = y_var, fill = fill_var)) +
+      geom_bar(stat = "identity", width = 1) +
+      geom_text(aes(y = label_ypos, label = scales::percent(proportion_pr, 0.01)),
+                vjust = 1.6, fontface = "bold", size = 4.2) 
+  } else if (plot_type == "smooth") {
+    p <- ggplot(oc_new, aes_string(x = x_var, y = y_var, fill = fill_var)) +
+      geom_area(color = "black", linewidth = 0.1, position = "stack") 
+  }
+  p <- p +
     scale_fill_manual(name = "Decision",
                       values = c("No-Go" = "red", "Consider" = "#F0E442", "Go" = "#009E73")) +
     labs(y = "Probability") +
