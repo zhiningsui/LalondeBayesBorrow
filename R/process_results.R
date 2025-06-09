@@ -233,3 +233,61 @@ create_pmd_summary <- function(post_inference_all,
   return(pmd_summary)
 }
 
+
+
+#' Create a Data Frame of Operating Characteristic Risks
+#'
+#' @description
+#' This function takes the operating characteristics from a simulation run and
+#' creates a data frame summarizing the False Go Rate (FGR) and False
+#' Stop Rate (FSR) for each simulation scenario.
+#'
+#' @param oc_all A data frame from `process_sim_results()`.
+#' @param lrv The Lower Reference Value used in the simulation.
+#' @param tv The Target Value used in the simulation.
+#' @param group_vars A character vector of variable names to group by. If `NULL` (default),
+#'   the function will automatically use all setting columns.
+#'
+#' @return A data frame with the FGR and FSR for each simulation scenario.
+#'
+#' @importFrom dplyr %>% group_by summarize filter select mutate case_when
+#' @importFrom tidyr pivot_wider
+#' @export
+create_risk_df <- function(oc_all, lrv, tv, group_vars = NULL) {
+  # --- Argument Validation ---
+  if (missing(lrv) || missing(tv)) {
+    stop("Arguments 'lrv' and 'tv' must be provided to calculate risks correctly.")
+  }
+
+  # --- Automatically determine group_vars if not provided ---
+  if (is.null(group_vars)) {
+    all_names <- names(oc_all)
+    result_patterns <- "^proportion_|^decision_pr|^count_"
+    group_vars <- all_names[!grepl(result_patterns, all_names)]
+    exclude_patterns <- "^true_value"
+    group_vars <- group_vars[!grepl(exclude_patterns, group_vars) & group_vars != "treatment.p"]
+
+    if (length(group_vars) == 0) {
+      stop("Could not automatically determine grouping variables. Please specify `group_vars` manually.")
+    }
+  }
+
+  # --- Calculate Risks (FGR and FSR) ---
+  risk_data <- oc_all %>%
+    filter(
+      (true_value.compare_true == lrv & decision_pr == "Go") |
+        (true_value.compare_true == tv & decision_pr == "No-Go")
+    ) %>%
+    mutate(
+      risk_type = case_when(
+        decision_pr == "Go" ~ "FGR",
+        decision_pr == "No-Go" ~ "FSR",
+        TRUE ~ NA_character_
+      )
+    ) %>%
+    group_by(across(all_of(c(group_vars, "risk_type")))) %>%
+    summarize(proportion = mean(proportion_pr, na.rm = TRUE), .groups = "drop") %>%
+    pivot_wider(names_from = risk_type, values_from = proportion)
+
+  return(risk_data)
+}

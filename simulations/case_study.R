@@ -31,7 +31,6 @@ param_grid_h <- expand.grid(
   stringsAsFactors = FALSE
 )
 
-
 data_gen_params_list <- lapply(apply(scenarios, 1, as.list),
                                create_data_gen_params, endpoint = "binary")
 
@@ -79,7 +78,7 @@ for (i in seq_along(data_gen_params_list)) {
     control.a = 1,
     control.b = 1,
     control.w = NA, # borrowing
-    control.delta_gate = c(0.1, 0.15),
+    control.delta_gate = c(0.1),
     control.ess_h = c(1, 2) * unique(summary$control.n),
     stringsAsFactors = FALSE
   ) %>%
@@ -93,82 +92,8 @@ for (i in seq_along(data_gen_params_list)) {
     out
   })
 
-  cat("Start Bayesian analysis.\n")
-  for (k in seq_along(prior_params_list)) {
-    start_time_k <- Sys.time()
-
-    prior_params <- prior_params_list[[k]]
-
-    settings <- c(list(true_value = data$true_value),
-                  data_gen_params, data_gen_params_h,
-                  prior_params)
-
-    settings <- as.data.frame(t(unlist(settings)), stringsAsFactors = FALSE) %>%
-      mutate(across(
-        .cols = -c(ends_with(".name")),
-        .fns = as.numeric
-      ))
-
-    post <- bayesian_lalonde_decision(endpoint = "binary",
-                                      data_summary = summary,
-                                      prior_params = prior_params,
-                                      arm_names = c(treatment = "treatment",
-                                                    control = "control",
-                                                    control_h = "control_h"),
-                                      lrv = 0.1, tv = 0.2,
-                                      fgr = 0.2, fsr = 0.1,
-                                      posterior_infer = T,
-                                      Lalonde_decision = T)
-
-    post$metrics_post_dist <- calc_post_dist_metrics(endpoint = "OR",
-                                                     true_value = data$true_value$compare_true,
-                                                     post$post_est_ci)
-    post$settings <- settings
-    post$data_summary <- cbind(i, summary)
-
-    bayes_results[[length(bayes_results)+1]] <- post
-
-    end_time_k <- Sys.time()
-    cat("Time for Bayesian analysis with prior parameter list", k, "=", round(difftime(end_time_k, start_time_k, units = "secs"), 2), "seconds\n\n")
-  }
-  end_time_i <- Sys.time()
-  cat("Total time for data_gen_params set", i, "=", round(difftime(end_time_i, start_time_i, units = "secs"), 2), "seconds\n\n")
-}
-
-
-saveRDS(bayes_results, file = "simulations/casestudy_OR_bayes_results_borrow.rds")
-
-
-# No borrowing
-
-bayes_results_noborrow <- list()
-
-for (i in seq_along(data_gen_params_list)) {
-  start_time_i <- Sys.time()
-
-  data_gen_params <- data_gen_params_list[[i]]
-  cat("Running", nsim, "simulations for data_gen_params set", i, "\n\n")
-  for (arm in names(data_gen_params)) {
-    cat("\t Arm:", arm, "\n")
-    cat("\t  n:", data_gen_params[[arm]]$n, "\n")
-    cat("\t  p:", data_gen_params[[arm]]$p, "\n")
-  }
-
-  n_arms <- length(data_gen_params)
-  arm_names <- sapply(data_gen_params, function(x) x$name)
-  n_list <- sapply(data_gen_params, function(x) x$n)
-  prob_list <- sapply(data_gen_params, function(x) x$p)
-
-  # Generate simulation dataset
-  data <- data_gen_binary(n_arms = n_arms, arm_names = arm_names, nsim = nsim,
-                          n_list = n_list, prob_list = prob_list, seed = 123)
-
-  summary <- data$summary
-  summary_h <- data.frame(control_h.n = param_grid_h$ctrl_h_n,
-                          control_h.count = round(param_grid_h$ctrl_h_n * param_grid_h$ctrl_h_p))
-  summary <- cbind(summary, summary_h)
-
-  prior_grid <- expand.grid(
+  # No borrowing
+  prior_params_list[[length(prior_params_list)+1]] <- list(
     treatment.a0 = 1,
     treatment.b0 = 1,
     treatment.a = 1,
@@ -182,10 +107,6 @@ for (i in seq_along(data_gen_params_list)) {
     stringsAsFactors = FALSE
   )
 
-  prior_params_list <- apply(prior_grid, 1, function(row) {
-    as.list(row)
-  })
-
   cat("Start Bayesian analysis.\n")
   for (k in seq_along(prior_params_list)) {
     start_time_k <- Sys.time()
@@ -204,6 +125,7 @@ for (i in seq_along(data_gen_params_list)) {
 
     post <- bayesian_lalonde_decision(endpoint = "binary",
                                       data_summary = summary,
+                                      settings = settings,
                                       prior_params = prior_params,
                                       arm_names = c(treatment = "treatment",
                                                     control = "control",
@@ -213,13 +135,12 @@ for (i in seq_along(data_gen_params_list)) {
                                       posterior_infer = T,
                                       Lalonde_decision = T)
 
-    post$metrics_post_dist <- calc_post_dist_metrics(endpoint = "OR",
-                                                     true_value = data$true_value$compare_true,
-                                                     post$post_est_ci)
-    post$settings <- settings
-    post$data_summary <- cbind(i, summary)
+    post$metrics_post_dist <- cbind(settings,
+                                    calc_post_dist_metrics(endpoint = "OR",
+                                                           true_value = post$post_est_ci$true_value.compare_true,
+                                                           post_est_ci = post$post_est_ci))
 
-    bayes_results_noborrow[[length(bayes_results_noborrow)+1]] <- post
+    bayes_results[[length(bayes_results)+1]] <- post
 
     end_time_k <- Sys.time()
     cat("Time for Bayesian analysis with prior parameter list", k, "=", round(difftime(end_time_k, start_time_k, units = "secs"), 2), "seconds\n\n")
@@ -228,12 +149,11 @@ for (i in seq_along(data_gen_params_list)) {
   cat("Total time for data_gen_params set", i, "=", round(difftime(end_time_i, start_time_i, units = "secs"), 2), "seconds\n\n")
 }
 
-
-saveRDS(bayes_results_noborrow, file = "simulations/casestudy_OR_bayes_results_noborrow.rds")
-
-bayes_results <- c(bayes_results, bayes_results_noborrow)
-
 saveRDS(bayes_results, file = "simulations/casestudy_OR_bayes_results_1.rds")
+bayes_results <- readRDS(file = "simulations/casestudy_OR_bayes_results.rds")
+
+results <- process_sim_results(bayes_results)
+results
 
 
 post_params_all <- data.frame()
@@ -333,93 +253,6 @@ oc_subset <- oc_df %>%
   arrange(control.n) %>%
   group_by(ess.ratio)
 
-#
-# p_borrow <- ggplot(oc_df ,
-#                    aes(x = control.n, y = proportion_pr, fill = decision_pr)) +
-#   geom_area(color = "black", linewidth = 0.1, position = "stack") +
-#   scale_fill_manual(
-#     values = c("No-Go" = "red", "Consider" = "#F0E442", "Go" = "#009E73"),
-#     name = "Decision"
-#   ) +
-#   facet_grid(~ n_ratios,
-#              labeller = label_parsed) +
-#   labs(y = "Decision Probability", x = expression("Concurrent Control Arm Sample Size (" * n[cc] * ")")) +
-#   theme_bw() +
-#   theme(
-#     legend.position = "bottom",
-#     title = element_text(size = 13),
-#     legend.title = element_text(size = 12),
-#     legend.text = element_text(size = 11),
-#     axis.title = element_text(size = 12),
-#     axis.text = element_text(size = 10),
-#     strip.text = element_text(size = 12),
-#     panel.grid.minor = element_blank()
-#   )
-#
-# p_noborrow <- ggplot(oc_df %>% subset(borrowing == "Borrowing: No"),
-#                      aes(x = control.n, y = proportion_pr, fill = decision_pr)) +
-#   geom_area(color = "black", linewidth = 0.1, position = "stack") +
-#   scale_fill_manual(
-#     values = c("No-Go" = "red", "Consider" = "#F0E442", "Go" = "#009E73"),
-#     name = "Decision"
-#   ) +
-#   facet_grid(~n_ratios,
-#              labeller = label_parsed) +
-#   labs(y = "Decision Probability", x = expression("Concurrent Control Arm Sample Size (" * n[cc] * ")")) +
-#   theme_bw() +
-#   theme(
-#     legend.position = "bottom",
-#     title = element_text(size = 13),
-#     legend.title = element_text(size = 12),
-#     legend.text = element_text(size = 11),
-#     axis.title = element_text(size = 12),
-#     axis.text = element_text(size = 10),
-#     strip.text = element_text(size = 12),
-#     panel.grid.minor = element_blank()
-#   )
-#
-# library(patchwork)
-# p1 <- p_noborrow + p_borrow +
-#   plot_layout(widths = c(1,2),
-#               guides = 'collect',
-#               axes = "collect",
-#               axis_titles = "collect") &
-#   theme(legend.position = "bottom")
-#
-# ggsave("simulations/casestudy_zone_size_vs_sample_size.jpg", p1, width = 10.5, height = 3.5)
-#
-
-
-
-# oc_df1 <- oc_df %>%
-#   subset(control.n %in% c(20, 25, 30, 35, 40, 45, 50) & treatment.n %in% c(40, 50, 60, 70, 80, 80, 90, 100))
-#
-#
-# p1 <- ggplot(oc_df1, aes(x = control.n, y = proportion_pr, fill = decision_pr)) +
-#   geom_area(color = "black", linewidth = 0.1, position = "stack") +
-#   scale_fill_manual(
-#     values = c("No-Go" = "red", "Consider" = "#F0E442", "Go" = "#009E73"),
-#     name = "Decision"
-#   ) +
-#   facet_grid(control.delta_SAM~n_ratios,
-#              labeller = label_parsed) +
-#   labs(y = "Decision Probability",
-#        x = expression("Control Arm Sample Size (" * n[c] * ")")) +
-#   theme_bw() +
-#   theme(
-#     legend.position = "bottom",
-#     title = element_text(size = 13),
-#     legend.title = element_text(size = 12),
-#     legend.text = element_text(size = 11),
-#     axis.title = element_text(size = 12),
-#     axis.text = element_text(size = 10),
-#     strip.text = element_text(size = 12),
-#     panel.grid.minor = element_blank()
-#   )
-#
-# ggsave("simulations/casestudy_zone_size_vs_sample_size_no_conflict_2.jpg", p1, width = 4, height = 4)
-
-
 
 # 2. OC for Varying Treatment Effects (Without Conflict) ---------------------------------------------
 
@@ -450,7 +283,6 @@ data_gen_params_list_h <- lapply(apply(param_grid_h, 1, as.list),
                                  create_data_gen_params, endpoint = "binary")
 
 data_gen_params_h <- data_gen_params_list_h[[1]]
-
 
 nsim = 10000
 bayes_results <- list()
@@ -536,6 +368,7 @@ for (i in seq_along(data_gen_params_list)) {
 
     post <- bayesian_lalonde_decision(endpoint = "binary",
                                       data_summary = summary,
+                                      settings = settings,
                                       prior_params = prior_params,
                                       arm_names = c(treatment = "treatment",
                                                     control = "control",
@@ -545,11 +378,10 @@ for (i in seq_along(data_gen_params_list)) {
                                       posterior_infer = T,
                                       Lalonde_decision = T)
 
-    post$metrics_post_dist <- calc_post_dist_metrics(endpoint = "OR",
-                                                     true_value = data$true_value$compare_true,
-                                                     post$post_est_ci)
-    post$settings <- settings
-    post$data_summary <- cbind(i, summary)
+    post$metrics_post_dist <- cbind(settings,
+                                    calc_post_dist_metrics(endpoint = "OR",
+                                                           true_value = post$post_est_ci$true_value.compare_true,
+                                                           post_est_ci = post$post_est_ci))
 
     bayes_results[[length(bayes_results)+1]] <- post
 
@@ -561,56 +393,21 @@ for (i in seq_along(data_gen_params_list)) {
 }
 
 
-post_params_all <- data.frame()
-post_est_ci_all <- data.frame()
-post_inference_all <- data.frame()
-metrics_post_dist_all <- data.frame()
-oc_all <- data.frame()
-data_summary_all <- data.frame()
-for (i in seq_along(bayes_results)) {
-  res <- bayes_results[[i]]
-  setting <- res$settings
-  post_params <- cbind(setting, res$post_params)
-  post_est_ci <- cbind(setting, res$post_est_ci)
-  post_inference <- cbind(setting, res$post_inference)
-  metrics_post_dist <- cbind(setting, res$metrics_post_dist)
-
-  post_inference$decision_pr <- ifelse(is.na(post_inference$decision_pr), post_inference$decision_ci, post_inference$decision_pr)
-  post_inference$decision_ci <- ifelse(is.na(post_inference$decision_ci), post_inference$decision_pr, post_inference$decision_ci)
-
-  oc <- cbind(setting, obtain_oc(post_inference))
-
-  data_summary_all <- bind_rows(data_summary_all, res$data_summary)
-  post_params_all <- bind_rows(post_params_all, cbind(i, post_params))
-  post_est_ci_all <- bind_rows(post_est_ci_all, cbind(i, post_est_ci))
-  post_inference_all <- bind_rows(post_inference_all, cbind(i, post_inference))
-  metrics_post_dist_all <- bind_rows(metrics_post_dist_all, cbind(i, metrics_post_dist))
-  oc_all <- bind_rows(oc_all, cbind(i, oc))
-}
-
-bayes_results_all <- list(
-  data_summary_all = data_summary_all,
-  metrics_post_dist_all = metrics_post_dist_all,
-  post_params_all = post_params_all,
-  post_est_ci_all = post_est_ci_all,
-  post_inference_all = post_inference_all,
-  oc_all = oc_all
-)
+saveRDS(bayes_results, file = "simulations/casestudy_OR_bayes_results_vary_Delta.rds")
+results <- process_sim_results(bayes_results)
 
 
-oc_df <- bayes_results_all$oc_all %>%
-  mutate(borrow = ifelse(is.na(control.w), "Yes", "No")) %>%
- select("i" , "control.n", "borrow", "control.ess_h",
-         "control.p", "treatment.p", "control_h.p",
-         "decision_pr", "proportion_pr", "proportion_ci") %>%
-  mutate(decision_pr = factor(decision_pr, levels = c("no-go", "consider", "go"),
-                              labels = c("No-Go", "Consider", "Go"))) %>%
+oc_df <- results$oc_all %>%
   mutate(ess.ratio = ifelse(borrow == "Yes", control.ess_h / control.n, 0)) %>%
   mutate(n_ratios = factor(ess.ratio,
                            levels = c("0", "1", "2"),
                            labels = c(expression(n[hc*","*e] == 0 * " (No Borrowing)"),
                                       expression(paste(n[t], ' : ', n[cc], ' : ', n[hc*','*e], ' = 2:1:1')),
                                       expression(paste(n[t], ' : ', n[cc], ' : ', n[hc*','*e], ' = 2:1:2')))))
+
+
+plot_oc(oc_df, x_var = "treatment.p", facet_formula = ~ n_ratios)
+
 
 
 p2 <- ggplot(oc_df, aes(x = treatment.p, y = proportion_pr, fill = decision_pr)) +

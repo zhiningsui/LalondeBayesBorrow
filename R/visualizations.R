@@ -1,69 +1,85 @@
 #' Plot Operating Characteristics (OC)
 #'
 #' @description
-#' Creates a stacked bar plot of the operating characteristics.
+#' Creates a stacked bar plot of the operating characteristics, showing the
+#' probabilities of "Go", "No-Go", and "Consider" decisions for each
+#' simulation scenario.
 #'
-#' @param oc_data A data frame, typically `processed_results$oc_all`.
-#' @param x_var A character string for the x-axis variable.
-#' @param facet_formula A formula for faceting the plot (e.g., `~ trt_n + borrowing`).
-#' @param ... Additional arguments passed to `ggplot2` functions.
+#' @param oc_data A data frame containing the operating characteristics,
+#'   typically from `process_sim_results()`. Must contain columns for the
+#'   decision proportions (e.g., `proportion_pr`) and the decision types
+#'   (e.g., `decision_pr`).
+#' @param x_var A character string specifying the variable for the x-axis
+#'   (e.g., `"control.n"` or `"control.p.diff"`).
+#' @param facet_formula A formula for faceting the plot, to split it into
+#'   panels based on other setting variables (e.g., `~ borrowing` or
+#'   `true_value.compare_true ~ borrowing`).
+#' @param ... Additional arguments passed to `ggplot2` functions for further
+#'   customization (e.g., `labs()`, `theme()`).
 #'
 #' @return A ggplot object.
+#'
+#' @importFrom ggplot2 ggplot aes_string geom_bar labs scale_fill_manual theme_bw theme facet_grid
 #' @export
-plot_oc <- function(oc_data, x_var, facet_formula = NULL, ...) {
-  oc_data$decision_pr <- factor(oc_data$decision_pr, levels = c("no-go", "consider", "go"))
-
-  p <- ggplot(oc_data, aes_string(x = x_var, y = "proportion_pr", fill = "decision_pr")) +
-    geom_bar(stat = "identity", width = 0.7) +
-    labs(x = x_var, y = "Probability", fill = "Decision") +
-    scale_fill_manual(values = c("no-go" = "red", "consider" = "#F0E442", "go" = "#009E73")) +
-    theme_bw() +
-    theme(legend.position = "bottom")
-
-  if (!is.null(facet_formula)) {
-    p <- p + facet_grid(facet_formula)
+#'
+#' @examples
+#' # Assuming 'processed_results' is the output from process_sim_results()
+#' # and contains an 'oc_all' data frame.
+#'
+#' # plot_oc(
+#' #   oc_data = processed_results$oc_all,
+#' #   x_var = "control.n",
+#' #   facet_formula = true_value.compare_true ~ borrowing,
+#' #   labs(
+#' #     title = "Operating Characteristics by Sample Size and Borrowing",
+#' #     x = "Sample Size per Arm",
+#' #     y = "Probability of Decision"
+#' #   )
+#' # )
+plot_oc <- function(oc_data, x_var, facet_formula = NULL, plot_type = "stepwise", ...) {
+  # Ensure the decision column is a factor with a specific order for consistent plotting
+  if ("decision_pr" %in% names(oc_data)) {
+    oc_data$decision_pr <- factor(oc_data$decision_pr, levels = c("No-Go", "Consider", "Go"))
+    y_var <- "proportion_pr"
+    fill_var <- "decision_pr"
+  } else {
+    stop("A decision proportion column (e.g., 'proportion_pr') was not found in the data.")
   }
 
+  oc_new <- data.frame()
+  oc_tmp <- oc_data
+  for (i in seq(1, nrow(oc_tmp), 3)) {
+    tmp <- oc_tmp[i:(i+2),]
+    tmp[tmp$decision_pr == "Go", "label_ypos"] <- tmp[tmp$decision_pr == "Go", "proportion_pr"]
+    tmp[tmp$decision_pr == "Consider", "label_ypos"] <- tmp[tmp$decision_pr == "Go", "proportion_pr"] + tmp[tmp$decision_pr == "Consider", "proportion_pr"]
+    tmp[tmp$decision_pr == "No-Go", "label_ypos"] <- 1
+    oc_new <- rbind(oc_new, tmp)
+  }
+
+
+  p <- ggplot(oc_new, aes_string(x = x_var, y = y_var, fill = fill_var)) +
+    geom_bar(stat = "identity", width = 1) +
+    geom_text(aes(y = label_ypos, label = scales::percent(proportion_pr, 0.01)),
+              vjust = 1.6, fontface = "bold", size = 4.2) +
+    scale_fill_manual(name = "Decision",
+                      values = c("No-Go" = "red", "Consider" = "#F0E442", "Go" = "#009E73")) +
+    labs(y = "Probability") +
+    theme_bw(base_size = 14) +
+    theme(legend.position = "bottom",
+          strip.text = element_text(size = 16),
+          legend.title = element_text(size = 17),
+          legend.text = element_text(size = 15),
+          axis.title = element_text(size = 17),
+          axis.text = element_text(size = 15))
+
+  # Apply faceting if a formula is provided
+  if (!is.null(facet_formula)) {
+    p <- p + facet_grid(facet_formula, labeller = label_parsed)
+  }
+
+  # Apply any additional ggplot2 customizations
   p <- p + list(...)
+
   return(p)
 }
 
-
-#' Plot Risk Profile (Type I and Type II Errors)
-#'
-#' @description
-#' Creates a plot of the False Go Rate (FGR) and False Stop Rate (FSR).
-#'
-#' @param oc_data A data frame, typically `processed_results$oc_all`.
-#' @param x_var A character string for the x-axis variable.
-#' @param facet_formula A formula for faceting the plot.
-#' @param ... Additional arguments passed to `ggplot2` functions.
-#'
-#' @return A ggplot object.
-#' @export
-plot_risk <- function(oc_data, x_var, facet_formula = NULL, ...) {
-  lrv_val <- min(abs(oc_data$true_value.compare_true))
-  tv_val <- max(abs(oc_data$true_value.compare_true))
-
-  risk_data <- oc_data %>%
-    filter(
-      (abs(true_value.compare_true) == lrv_val & decision_pr == "go") |
-        (abs(true_value.compare_true) == tv_val & decision_pr == "no-go")
-    ) %>%
-    mutate(risk_type = ifelse(decision_pr == "go", "Type I Error (FGR)", "Type II Error (FSR)"))
-
-  p <- ggplot(risk_data, aes_string(x = x_var, y = "proportion_pr", color = "risk_type")) +
-    geom_point(size = 3) +
-    geom_hline(aes(yintercept = 0.2, color = "Type I Error (FGR)"), linetype = "dashed") +
-    geom_hline(aes(yintercept = 0.1, color = "Type II Error (FSR)"), linetype = "dashed") +
-    labs(x = x_var, y = "Risk Value", color = "") +
-    theme_bw() +
-    theme(legend.position = "bottom")
-
-  if (!is.null(facet_formula)) {
-    p <- p + facet_grid(facet_formula)
-  }
-
-  p <- p + list(...)
-  return(p)
-}

@@ -200,34 +200,10 @@ kbl(pmd_tab,
 
 # + Visualize risks -------------------------------------------------------
 
-risk_df <- bayes_results_all$oc_all %>%
-  mutate(borrowing = ifelse(is.na(control.w), "Borrowing: Yes", "Borrowing: No"),
-         gate = ifelse(is.na(control.delta_gate), "Gated Control: No", "Gated Control: Yes"),
-         control.p.diff = control.p - control_h.p) %>%
-  filter(true_value.compare_true %in% c(0.1, 0.2),
-         decision_pr %in% c("go", "no-go")) %>%
-  mutate(
-    CorrectLabel = case_when(
-      true_value.compare_true == 0.2 & decision_pr == "go" ~ "CGR",
-      true_value.compare_true == 0.1 & decision_pr == "no-go" ~ "CSR",
-      TRUE ~ NA_character_
-    ),
-    RiskLabel = case_when(
-      true_value.compare_true == 0.1 & decision_pr == "go" ~ "FGR",
-      true_value.compare_true == 0.2 & decision_pr == "no-go" ~ "FSR",
-      TRUE ~ NA_character_
-    )
-  ) %>%
-  pivot_longer(cols = c(CorrectLabel, RiskLabel), names_to = "type", values_to = "label") %>%
-  filter(!is.na(label)) %>%
-  group_by(gate, borrowing, control.delta_SAM, control.ess_h, control.p, label) %>%
-  summarize(prop = mean(proportion_pr), .groups = "drop") %>%
-  pivot_wider(names_from = label, values_from = prop)
-
+risk_df <- create_risk_df(oc_all = results$oc_all, lrv = 0.1, tv = 0.2)
 
 risk_df1 <- risk_df %>%
   pivot_longer(c(FSR, FGR)) %>%
-  subset(gate == "Gated Control: Yes" & control.delta_SAM !=0.05) %>%
   mutate(control.p = factor(control.p,
                             levels = c("0.1", "0.15", "0.2", "0.25", "0.3", "0.35", "0.4", "0.45", "0.5")),
          control.delta_SAM = factor(control.delta_SAM,
@@ -238,7 +214,9 @@ risk_df1 <- risk_df %>%
                                 levels = c("45", "90", "180"),
                                 labels = c(expression(n[hc*","*e] == 45),
                                            expression(n[hc*","*e] == 90),
-                                           expression(n[hc*","*e] == 180))))
+                                           expression(n[hc*","*e] == 180))),
+         borrow = paste0("Borrowing: ", borrow))
+
 shade_df <- data.frame(
   control.delta_SAM = factor(c(0.1, 0.15),
                              levels = c("0.1", "0.15"),
@@ -249,7 +227,7 @@ shade_df <- data.frame(
   ymin = -Inf,
   ymax = Inf)
 
-p_risk_borrow <- ggplot(risk_df1 %>% filter(borrowing == "Borrowing: Yes"),
+p_risk_borrow <- ggplot(risk_df1 %>% filter(borrow == "Borrowing: Yes"),
                         aes(x = control.p, y = value, color = name)) +
   geom_point(size = 2) +
   geom_rect(
@@ -278,7 +256,7 @@ p_risk_borrow <- ggplot(risk_df1 %>% filter(borrowing == "Borrowing: Yes"),
   )
 
 p_risk_noborrow <- risk_df1 %>%
-  subset(borrowing == "Borrowing: No") %>%
+  subset(borrow == "Borrowing: No") %>%
   select(-c(control.delta_SAM, control.ess_h)) %>%
   distinct() %>%
   mutate(control.ess_h = factor(0, labels = expression(n[hc*","*e] == 0 * " (No Borrowing)"))) %>%
@@ -306,48 +284,26 @@ library(patchwork)
 top <- p_risk_noborrow + guide_area() +
   plot_layout(widths = c(1, 2), guides = 'collect')
 
-# p_risk <- top / (p_risk_borrow + theme(legend.position = "none"))  +
-#   plot_layout(heights = c(1, 2), guides = 'collect', axis_titles = 'collect')
-
 p_risk <- (p_risk_borrow + theme(legend.position = "none")) / top  +
   plot_layout(heights = c(2, 1), guides = 'collect', axis_titles = 'collect')
 
-
-ggsave( "simulations/sim_OR_conflict_vs_risk_paper.jpg", p_risk, width = 12, height = 8)
+ggsave("simulations/sim_OR_conflict_vs_risk_paper.jpg", p_risk, width = 12, height = 8)
 
 # + Generate plots for OC -------------------------------------------------
 
-oc_df <- bayes_results_all$oc_all %>%
-  subset(control.delta_gate %in% c(0.1, 0.15)) %>%
-  mutate(borrowing = ifelse(is.na(control.w), "Borrowing: Yes", "Borrowing: No")) %>%
-  select("i", "borrowing",
+oc_data <- results$oc_all %>%
+  mutate(borrow = paste0("Borrowing: ", borrow)) %>%
+  select("borrow",
          "true_value.compare_true",
          "control.delta_SAM", "control.ess_h",
          "control.p",
-         "decision_pr", "proportion_pr", "proportion_ci") %>%
-  mutate(decision_pr = factor(decision_pr, levels = c("no-go", "consider", "go"),
-                              labels = c("No-Go", "Consider", "Go")),
-         true_value.compare_true = ifelse(true_value.compare_true == 0.2, "0.2 (TV)", "0.1 (LRV)"))
+         "decision_pr", "proportion_pr") %>%
+  mutate(true_value.compare_true = ifelse(true_value.compare_true == 0.2, "0.2 (TV)", "0.1 (LRV)"))
 
 
-oc_new <- data.frame()
-oc_tmp <- na.omit(oc_df)
-for (i in seq(1, nrow(oc_tmp), 3)) {
-  tmp <- oc_tmp[i:(i+2),]
-  tmp[tmp$decision_pr == "Go", "label_ypos"] <- tmp[tmp$decision_pr == "Go", "proportion_pr"] * 0.995
-  tmp[tmp$decision_pr == "Consider", "label_ypos"] <- tmp[tmp$decision_pr == "Go", "proportion_pr"] + tmp[tmp$decision_pr == "Consider", "proportion_pr"] + 0.02
-  tmp[tmp$decision_pr == "No-Go", "label_ypos"] <- 1 + 0.012
-  oc_new <- rbind(oc_new, tmp)
-}
-
-oc_new <- oc_new[, c("true_value.compare_true", "control.delta_SAM", "control.ess_h",
-                     "borrowing",
-                     "control.p",
-                     "decision_pr", "proportion_pr", "label_ypos")]
-
-oc_borrow <- oc_new %>% subset(borrowing == "Borrowing: Yes")
-oc_noborrow <- oc_new %>%
-  subset(borrowing == "Borrowing: No") %>%
+oc_borrow <- oc_data %>% subset(borrow == "Borrowing: Yes")
+oc_noborrow <- oc_data %>%
+  subset(borrow == "Borrowing: No") %>%
   select(-c(control.delta_SAM, control.ess_h)) %>%
   distinct() %>%
   mutate(control.delta_SAM = NA,
@@ -371,11 +327,8 @@ oc_new$control.delta_SAM <- factor(oc_new$control.delta_SAM,
                                    labels = c(expression(paste(delta, " = 0.1")),
                                               expression(paste(delta, " = 0.15"))))
 
-myColors <- c("red","#F0E442","#009E73")
-names(myColors) <- levels(oc_borrow$decision_pr)
-
-oc_borrow <- subset(oc_new, borrowing == "Borrowing: Yes")
-oc_noborrow <- subset(oc_new, borrowing == "Borrowing: No")
+oc_borrow <- subset(oc_new, borrow == "Borrowing: Yes")
+oc_noborrow <- subset(oc_new, borrow == "Borrowing: No")
 
 p_list <- list()
 for (i in levels(oc_borrow$true_value.compare_true)) {
@@ -387,23 +340,10 @@ for (i in levels(oc_borrow$true_value.compare_true)) {
   oc_tmp_borrow2a <- oc_tmp_borrow %>% filter(control.ess_h == levels(oc_new$control.ess_h)[3])
   oc_tmp_borrow2b <- oc_tmp_borrow %>% filter(control.ess_h == levels(oc_new$control.ess_h)[4])
 
-  p_noborrow <- ggplot(oc_tmp_noborrow,
-                       aes(x = control.p, y = proportion_pr, fill = decision_pr)) +
-    geom_bar(stat = "identity", width = 1) +
-    geom_text(aes(y = label_ypos, label = scales::percent(proportion_pr, 0.01)),
-              vjust = 1.6, fontface = "bold", size = 4.2) +
-    scale_fill_manual(name = "Decision", values = myColors) +
-    facet_grid( ~ control.ess_h,
-                labeller = labeller(control.ess_h = label_parsed)) +
-    labs(y = "Probability") +
-    xlab(~ paste("Concurrent Control ORR (", theta[c], ")")) +
-    theme_bw(base_size = 14) +
-    theme(legend.position = "none",
-          strip.text = element_text(size = 16),
-          legend.title = element_text(size = 17),
-          legend.text = element_text(size = 15),
-          axis.title = element_text(size = 17),
-          axis.text = element_text(size = 15))
+  p_noborrow <- plot_oc(oc_data = oc_tmp_noborrow, x_var = "control.p",
+                        facet_formula = ~ control.ess_h ) +
+    xlab(~ paste("Concurrent Control ORR (", theta[c], ")"))
+
 
   make_plot <- function(data, legend_pos = "none") {
     ggplot(data, aes(x = control.p, y = proportion_pr, fill = decision_pr)) +
@@ -425,9 +365,19 @@ for (i in levels(oc_borrow$true_value.compare_true)) {
             axis.text = element_text(size = 15))
   }
 
-  p_borrow1 <- make_plot(oc_tmp_borrow1, legend_pos = "bottom")
-  p_borrow2a <- make_plot(oc_tmp_borrow2a)
-  p_borrow2b <- make_plot(oc_tmp_borrow2b)
+  p_borrow1 <-  plot_oc(oc_data = oc_tmp_borrow1, x_var = "control.p",
+                        facet_formula = control.delta_SAM ~ control.ess_h ) +
+    xlab(~ paste("Concurrent Control ORR (", theta[c], ")"))
+
+  p_borrow2a <- plot_oc(oc_data = oc_tmp_borrow2a, x_var = "control.p",
+                        facet_formula = control.delta_SAM ~ control.ess_h ) +
+    xlab(~ paste("Concurrent Control ORR (", theta[c], ")")) +
+    theme(legend.position = "none")
+
+  p_borrow2b <- plot_oc(oc_data = oc_tmp_borrow2b, x_var = "control.p",
+                        facet_formula = control.delta_SAM ~ control.ess_h ) +
+    xlab(~ paste("Concurrent Control ORR (", theta[c], ")")) +
+    theme(legend.position = "none")
 
   layout <- "
   AC
