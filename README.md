@@ -94,7 +94,7 @@ print(risk_plot)
 # 6. Create a Summary Table of the Posterior Mean Difference (PMD)
 pmd_summary_df <- create_pmd_summary(
   post_inference_all = processed_results$post_inference_all,
-  borrow_to_compare = c("Borrowing", "No_Borrowing")
+  borrow_to_compare = c("Yes", "No")
 )
 print(pmd_summary_df)
 ```
