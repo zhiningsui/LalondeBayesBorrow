@@ -1,5 +1,7 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
-^doc$
-^Meta$
 ^README\.Rmd$
+^manual\.pdf$
+^cran-comments\.md$
+^pkgdown$
+^_pkgdown\.yml$

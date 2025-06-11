@@ -96,7 +96,7 @@
 #' post_fixed_cont_ess <- posterior_distribution(endpoint = "continuous",
 #'                                              current = current_cont,
 #'                                              historical = historical_cont,
-#'                                              w = 0.6, ess_h = 40, # Use ESS=40 for historical
+#'                                              w = 0.6, ess_h = 40,
 #'                                              theta0 = 1.6, s0 = 2)
 #' str(post_fixed_cont_ess)
 #'
@@ -115,23 +115,23 @@
 #'                                        current = current_bin,
 #'                                        historical = historical_bin,
 #'                                        delta_SAM = 0.1, delta_gate = 0.1,
-#'                                        a = 0.5, b = 0.5, # Non-informative Beta(0.5, 0.5)
-#'                                        a0 = 1, b0 = 1) # Base for informative Beta(1, 1)
+#'                                        a = 0.5, b = 0.5,
+#'                                        a0 = 1, b0 = 1)
 #' str(post_sam_bin)
 #'
 #' # Binary Endpoint - Fixed weight with ESS discounting
 #' post_fixed_ess_bin <- posterior_distribution(endpoint = "binary",
 #'                                              current = current_bin,
 #'                                              historical = historical_bin,
-#'                                              w = 0.8, ess_h = 30, # Use ESS=30 for historical
+#'                                              w = 0.8, ess_h = 30,
 #'                                              a = 0.5, b = 0.5, a0 = 1, b0 = 1)
 #' str(post_fixed_ess_bin)
 #'
-#' # Binary Endpoint - No borrowing (w=0 explicitly, historical data still checked for structure)
+#' # Binary Endpoint - No borrowing (w=0 explicitly)
 #' post_noborrow_bin <- posterior_distribution(endpoint = "binary",
 #'                                             current = current_bin,
-#'                                             historical = historical_bin, # Still provide historical if available
-#'                                             w = 0, a = 0.5, b = 0.5) # Only non-informative prior params needed
+#'                                             historical = historical_bin,
+#'                                             w = 0, a = 0.5, b = 0.5)
 #' str(post_noborrow_bin)
 #'
 #' @seealso \code{\link{posterior_inference}}, \code{\link{posterior_prob}},

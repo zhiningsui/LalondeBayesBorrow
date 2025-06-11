@@ -24,6 +24,7 @@
 #'   * Additional metrics specific to the `"g-score"` endpoint (see `eval_gscore_approx_dist()`).
 #' @export
 #' @seealso `bayesian_lalonde_decision`, `eval_gscore_approx_dist`
+#' @importFrom stats na.omit sd
 calc_post_dist_metrics <- function(endpoint, true_value, post_est_ci, remove.na = FALSE) {
   if (endpoint == "g-score") {
 

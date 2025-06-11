@@ -59,7 +59,7 @@
 #'                                          quantiles = c(0.05, 0.95))
 #' print(inference_prob_diff)
 #'
-#' # Example 4: Two arms, log-transformed continuous data (e.g., log-expression), inference on ratio scale
+#' # Example 4: Two arms, log-transformed data, inference on ratio scale
 #' # Assume post_log_trt and post_log_ctrl are posteriors on the log scale
 #' post_log_trt <- mixnorm(c(1, log(10), 0.5))
 #' post_log_ctrl <- mixnorm(c(1, log(5), 0.6))
@@ -70,7 +70,7 @@
 #' print(inference_log_ratio)
 #'
 #' @seealso \code{\link{posterior_distribution}}, \code{\link{posterior_prob}},
-#'   \code{\link[RBesT]{summary}}, \code{\link[RBesT]{qmix}}, \code{\link[RBesT]{qmixdiff}}
+#'   \code{\link[RBesT]{summary.mix}}, \code{\link[RBesT]{qmix}}, \code{\link[RBesT]{qmixdiff}}
 posterior_inference <- function(post1, post2 = NULL, quantiles, EXP_TRANSFORM = FALSE) {
 
   # --- Input Validation ---

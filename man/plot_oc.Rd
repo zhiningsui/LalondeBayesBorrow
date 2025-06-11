@@ -19,6 +19,10 @@ decision proportions (e.g., \code{proportion_pr}) and the decision types
 panels based on other setting variables (e.g., \code{~ borrowing} or
 \code{true_value.compare_true ~ borrowing}).}
 
+\item{plot_type}{A character string specifying the type of plot.
+Either "stepwise" for a bar plot with text or "smooth" for a stacked area plot.
+Defaults to "stepwise".}
+
 \item{...}{Additional arguments passed to \code{ggplot2} functions for further
 customization (e.g., \code{labs()}, \code{theme()}).}
 }
@@ -26,7 +30,7 @@ customization (e.g., \code{labs()}, \code{theme()}).}
 A ggplot object.
 }
 \description{
-Creates a stacked bar plot of the operating characteristics, showing the
+Creates a stacked plot of the operating characteristics, showing the
 probabilities of "Go", "No-Go", and "Consider" decisions for each
 simulation scenario.
 }

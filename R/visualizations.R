@@ -1,7 +1,7 @@
 #' Plot Operating Characteristics (OC)
 #'
 #' @description
-#' Creates a stacked bar plot of the operating characteristics, showing the
+#' Creates a stacked plot of the operating characteristics, showing the
 #' probabilities of "Go", "No-Go", and "Consider" decisions for each
 #' simulation scenario.
 #'
@@ -14,12 +14,16 @@
 #' @param facet_formula A formula for faceting the plot, to split it into
 #'   panels based on other setting variables (e.g., `~ borrowing` or
 #'   `true_value.compare_true ~ borrowing`).
+#' @param plot_type A character string specifying the type of plot.
+#'   Either "stepwise" for a bar plot with text or "smooth" for a stacked area plot.
+#'   Defaults to "stepwise".
 #' @param ... Additional arguments passed to `ggplot2` functions for further
 #'   customization (e.g., `labs()`, `theme()`).
 #'
 #' @return A ggplot object.
 #'
-#' @importFrom ggplot2 ggplot aes_string geom_bar labs scale_fill_manual theme_bw theme facet_grid
+#' @importFrom ggplot2 ggplot aes_string geom_bar labs scale_fill_manual theme_bw theme facet_grid geom_text element_text label_parsed geom_area
+#' @importFrom scales percent
 #' @export
 #'
 #' @examples
@@ -37,7 +41,7 @@
 #' #   )
 #' # )
 plot_oc <- function(oc_data, x_var, facet_formula = NULL, plot_type = "stepwise", ...) {
-  
+
   if ("decision_pr" %in% names(oc_data)) {
     oc_data$decision_pr <- factor(oc_data$decision_pr, levels = c("No-Go", "Consider", "Go"))
     y_var <- "proportion_pr"
@@ -61,10 +65,10 @@ plot_oc <- function(oc_data, x_var, facet_formula = NULL, plot_type = "stepwise"
     p <- ggplot(oc_new, aes_string(x = x_var, y = y_var, fill = fill_var)) +
       geom_bar(stat = "identity", width = 1) +
       geom_text(aes(y = label_ypos, label = scales::percent(proportion_pr, 0.01)),
-                vjust = 1.6, fontface = "bold", size = 4.2) 
+                vjust = 1.6, fontface = "bold", size = 4.2)
   } else if (plot_type == "smooth") {
     p <- ggplot(oc_new, aes_string(x = x_var, y = y_var, fill = fill_var)) +
-      geom_area(color = "black", linewidth = 0.1, position = "stack") 
+      geom_area(color = "black", linewidth = 0.1, position = "stack")
   }
   p <- p +
     scale_fill_manual(name = "Decision",
@@ -115,12 +119,14 @@ plot_oc <- function(oc_data, x_var, facet_formula = NULL, plot_type = "stepwise"
 #'
 #' @importFrom dplyr %>% mutate select filter recode
 #' @importFrom tidyr pivot_longer
-#' @importFrom ggplot2 ggplot aes geom_area geom_line scale_color_manual scale_fill_manual labs annotate theme_minimal theme
+#' @importFrom ggplot2 ggplot aes geom_area geom_line scale_color_manual scale_fill_manual labs annotate theme_minimal theme element_text
 #' @importFrom stats dbeta dnorm
 #' @importFrom glue glue
+#' @importFrom grDevices rgb
+#' @importFrom rlang `%||%`
 #' @export
 plot_posterior <- function(post_params, post_inference, endpoint, title_format = NULL, x_range = NULL, ...) {
-  
+
   # --- Input Validation ---
   if (!is.data.frame(post_params) || nrow(post_params) != 2) {
     stop("'post_params' must be a data frame with exactly two rows: one for a 'borrowing' scenario and one for the 'no borrowing' scenario.")
@@ -137,11 +143,11 @@ plot_posterior <- function(post_params, post_inference, endpoint, title_format =
   if (!endpoint %in% c("binary", "continuous")) {
     stop("'endpoint' must be either 'binary' or 'continuous'.")
   }
-  
+
   # --- Extract parameter values ---
   post_params_borrow <- post_params %>% filter(borrow == "Yes")
   post_params_noborrow <- post_params %>% filter(borrow == "No")
-  
+
   # --- Determine plot range and compute densities ---
   if (endpoint == "binary") {
     x_vals <- seq(x_range[1] %||% 0, x_range[2] %||% 1, length.out = 1000)
@@ -177,7 +183,7 @@ plot_posterior <- function(post_params, post_inference, endpoint, title_format =
     x_lab <- "Value"
     response_text <- paste0("Concurrent Control: n=", post_params_noborrow$control.n)
   }
-  
+
   # --- Prepare data for plotting ---
   df_long <- df %>%
     select(x, control_noborrow, control_mixture, treatment) %>%
@@ -186,7 +192,7 @@ plot_posterior <- function(post_params, post_inference, endpoint, title_format =
                           control_noborrow = "Concurrent Control",
                           control_mixture = "Hybrid Control (SAM Prior)",
                           treatment = "Experimental Arm"))
-  
+
   # --- Define plot aesthetics ---
   fill_colors <- c(
     "Concurrent Control" = rgb(0, 0, 1, 0.3),
@@ -198,7 +204,7 @@ plot_posterior <- function(post_params, post_inference, endpoint, title_format =
     "Hybrid Control (SAM Prior)" = "red",
     "Experimental Arm" = "green"
   )
-  
+
   # --- Create annotation text ---
   prob_text <- paste0(
     "P(Minimal) = ", sprintf("%.3f", post_inference$pr_m),"\n",
@@ -206,7 +212,7 @@ plot_posterior <- function(post_params, post_inference, endpoint, title_format =
     "P(Target) = ", sprintf("%.3f", post_inference$pr_t), "\n\n",
     "Decision: ", stringr::str_to_title(post_inference$decision_pr)
   )
-  
+
   # --- Create the plot ---
   p <- ggplot(df_long, aes(x = x, y = density, fill = curve, color = curve)) +
     geom_area(alpha = 0.3, position = "identity") +
@@ -227,10 +233,10 @@ plot_posterior <- function(post_params, post_inference, endpoint, title_format =
       plot.title = element_text(size = 14, face = "bold", hjust = 0),
       legend.position = "bottom"
     )
-  
+
   # Apply any additional ggplot2 customizations
   p <- p + list(...)
-  
+
   return(p)
 }
 
