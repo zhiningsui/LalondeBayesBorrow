@@ -86,6 +86,8 @@ process_sim_results <- function(bayes_results) {
 #'   difference will be calculated as `borrow_to_compare[1] - borrow_to_compare[2]`.
 #' @param pmd_var The name of the single posterior estimate variable to use for
 #'   calculating the PMD. Defaults to `"est2_lalonde"`.
+#' @param group_vars A character vector of variable names to group by. If `NULL`,
+#'   the function will automatically use all setting columns.
 #'
 #' @return A data frame summarizing the mean and standard deviation of the PMD for
 #'   each relevant combination of settings.

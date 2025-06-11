@@ -21,7 +21,7 @@ Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
-Imports: dplyr,tidyr,knitr,RBesT,parallel,doParallel,foreach,data.table,stats,rlang
+Imports: dplyr,tidyr,knitr,RBesT,parallel,doParallel,foreach,data.table,stats,rlang,ggplot2,glue,kableExtra,patchwork,scales,stringr,tibble
 VignetteBuilder: knitr
 Suggests: 
     rmarkdown,
