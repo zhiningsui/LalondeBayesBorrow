@@ -69,8 +69,8 @@
 #' # credible interval is exp(CI_log_diff) = exp(CI_log_trt - CI_log_ctrl) = CI_ratio
 #' print(inference_log_ratio)
 #'
-#' @seealso \code{\link{posterior_distribution}}, \code{\link{posterior_prob}},
-#'   \code{\link[RBesT]{summary.mix}}, \code{\link[RBesT]{qmix}}, \code{\link[RBesT]{qmixdiff}}
+#' @seealso \code{\link{bayesian_lalonde_decision}}, \code{\link{posterior_distribution}},
+#'   \code{\link{posterior_prob}}, \code{\link[RBesT]{qmix}}, \code{\link[RBesT]{qmixdiff}}
 posterior_inference <- function(post1, post2 = NULL, quantiles, EXP_TRANSFORM = FALSE) {
 
   # --- Input Validation ---

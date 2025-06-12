@@ -82,6 +82,6 @@ print(inference_log_ratio)
 
 }
 \seealso{
-\code{\link{posterior_distribution}}, \code{\link{posterior_prob}},
-\code{\link[RBesT]{summary.mix}}, \code{\link[RBesT]{qmix}}, \code{\link[RBesT]{qmixdiff}}
+\code{\link{bayesian_lalonde_decision}}, \code{\link{posterior_distribution}},
+\code{\link{posterior_prob}}, \code{\link[RBesT]{qmix}}, \code{\link[RBesT]{qmixdiff}}
 }

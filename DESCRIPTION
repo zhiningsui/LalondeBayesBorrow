@@ -34,7 +34,9 @@ Imports:
     ggplot2,
     grDevices,
     glue,
-    scales
+    scales,
+    stringr,
+    tibble
 Suggests:
     knitr,
     rmarkdown,
