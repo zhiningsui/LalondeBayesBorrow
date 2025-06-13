@@ -302,12 +302,12 @@ posterior_distribution <- function(endpoint, current, historical = NULL, delta_S
       s_pooled <- sqrt( sigma2_pooled / n )
 
       if (!is.null(delta_gate) && abs(y - yh) >= delta_gate) {
-        message("Gate applied: |current - historical| >= delta_gate. Setting w_prior = 0.")
+        # message("Gate applied: |current - historical| >= delta_gate. Setting w_prior = 0.")
         w_prior <- 0
       } else {
-        if (!is.null(delta_gate)) {
-          message("Gate not triggered: |current - historical| < delta_gate. Proceeding with SAM prior.")
-        }
+        # if (!is.null(delta_gate)) {
+        #   message("Gate not triggered: |current - historical| < delta_gate. Proceeding with SAM prior.")
+        # }
 
         # SAM starts here
 
@@ -339,12 +339,12 @@ posterior_distribution <- function(endpoint, current, historical = NULL, delta_S
       thetac_current_mean <- x / n
 
       if (!is.null(delta_gate) && abs(thetac_current_mean - thetah_prior_mean) >= delta_gate) {
-        message("Gate applied: |current - historical| >= delta_gate. Setting w_prior = 0.")
+        # message("Gate applied: |current - historical| >= delta_gate. Setting w_prior = 0.")
         w_prior <- 0
       } else {  # Otherwise, compute SAM prior weight as usual
-        if (!is.null(delta_gate)) {
-          message("Gate not triggered: |current - historical| < delta_gate. Proceeding with SAM prior.")
-        }
+        # if (!is.null(delta_gate)) {
+        #   message("Gate not triggered: |current - historical| < delta_gate. Proceeding with SAM prior.")
+        # }
 
         if (thetah_prior_mean <= .Machine$double.eps || thetah_prior_mean >= 1 - .Machine$double.eps) {
           warning("Historical prior mean near 0/1. Unstable SAM weight. Forcing w_prior = 0.")

@@ -29,7 +29,7 @@
 #'   Historical arm data (e.g., `control_h.n`, `treatment_h.count`) are optional.
 #' @param settings A data frame (optional). Contains the settings for the simulation
 #'   run. If provided, it will be combined with the results.
-#' @param verbose A logical value. If `TRUE` (default), the function prints
+#' @param verbose A logical value. If `TRUE`, the function prints
 #'   progress messages and warnings to the console.
 #' @param prior_params A named list. Contains prior distribution and borrowing
 #'   parameters for each arm (treatment and control, potentially historical).
@@ -90,7 +90,7 @@
 #'   `RBesT::pmixdiff`, `RBesT::qmixdiff`
 #'
 #' @export
-bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, verbose = TRUE,
+bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, verbose = FALSE,
                                       prior_params, lrv = 0, tv = 0, fgr = 0.2, fsr = 0.1, arm_names,
                                       posterior_infer = TRUE, Lalonde_decision = TRUE,
                                       EXP_TRANSFORM = FALSE) {
@@ -206,6 +206,7 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, v
     .packages = c("RBesT", "dplyr", "tidyr", "data.table")
   ) %dopar% {
 
+    cat("Running simulation iteration ", nrep_val, "\n")
     # 1. Get Data for current simulation
     current_sim_data_dt <- data_summary_dt[nsim == nrep_val, ]
 
