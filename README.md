@@ -62,7 +62,6 @@ prior_params_list <- list(
 )
 
 # 3. Run the Simulation
-# The `run_simulation` function from the README does not exist.
 # The correct method is to loop through scenarios and call `bayesian_lalonde_decision`.
 
 nsim <- 500 # For stable results, a larger nsim (e.g., 1000+) is recommended.
