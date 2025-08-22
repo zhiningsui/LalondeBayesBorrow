@@ -93,7 +93,6 @@ for (i in seq_along(data_gen_params_list)) {
     control.ess_h = c(45, 90, 180),
     stringsAsFactors = FALSE
   )
-
   prior_grid$control.delta_SAM <- prior_grid$control.delta_gate
 
   prior_params_list2 <- lapply(rows_to_list(prior_grid), na_to_null)

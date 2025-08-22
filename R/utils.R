@@ -1,17 +1,4 @@
-#' Retrieve All Functions from an Environment
-#'
-#' This function returns the names of all functions within a specified environment.
-#'
-#' @param env An environment. The environment to search for functions. The default is the current environment.
-#'
-#' @return A character vector. Names of all functions found in the specified environment.
-#' @export
-get_all_functions <- function(env = environment()) {
-  all_objects <- ls(env)
-  functions <- sapply(all_objects, function(obj_name) is.function(get(obj_name, envir = env)))
-  return(names(functions)[functions])
-}
-
+# R/utils-internal.R
 #' Convert to RBesT Mixture Distribution
 #'
 #' This function generates a mixture distribution object compatible with the
@@ -374,6 +361,35 @@ create_data_gen_params <- function(params, endpoint) {
 }
 
 
+
+#' Retrieve All Functions from an Environment
+#'
+#' Returns the names of all functions within a specified environment.
+#' @param env An environment. The environment to search for functions. The default is the current environment.
+#'
+#' @return A character vector. Names of all functions found in the specified environment.
+#' @export
+get_all_functions <- function(env = environment()) {
+  all_objects <- ls(env)
+  functions <- sapply(all_objects, function(obj_name) is.function(get(obj_name, envir = env)))
+  return(names(functions)[functions])
+}
+
+#' Safely coerce to a length-1 numeric (or NULL)
+#'
+#' Converts \code{factor} or \code{character} to numeric, trims to length 1,
+#' and returns \code{NULL} for empty/missing/non-numeric inputs. If
+#' \code{allow_na = FALSE}, an \code{NA} input yields \code{NULL}.
+#'
+#' @param x Any R object.
+#' @param allow_na Logical; if \code{FALSE}, \code{NA} becomes \code{NULL}.
+#' @return A length-1 \code{numeric} or \code{NULL}.
+#' @examples
+#' num_or_null("3.14")
+#' num_or_null(factor("2"))
+#' num_or_null(NA_real_)        # NULL by default
+#' num_or_null(NA_real_, TRUE)  # NA if allowed
+#' @export
 num_or_null <- function(x, allow_na = FALSE) {
   if (is.null(x) || length(x) == 0) return(NULL)
   if (is.factor(x)) x <- as.character(x)
@@ -384,15 +400,63 @@ num_or_null <- function(x, allow_na = FALSE) {
   x
 }
 
+#' Safely get an element from a (possibly NULL) list
+#'
+#' Returns \code{NULL} if the list itself is \code{NULL}.
+#'
+#' @param lst A list (possibly \code{NULL}).
+#' @param key Element name to extract.
+#' @return The element \code{lst[[key]]} or \code{NULL}.
+#' @examples
+#' get_in(list(a = 1), "a")
+#' get_in(NULL, "a")
+#' @export
 get_in <- function(lst, key) if (is.null(lst)) NULL else lst[[key]]
 
-
+#' Convert a data frame to a list of row-lists without type loss
+#'
+#' Unlike \code{apply(df, 1, ...)}, this preserves column classes.
+#'
+#' @param df A data frame.
+#' @return A list of lists; each element corresponds to a row.
+#' @examples
+#' rows_to_list(data.frame(x = 1:2, y = c("a", "b")))
+#' @export
 rows_to_list <- function(df) {
   lapply(seq_len(nrow(df)), function(i) as.list(df[i, , drop = FALSE]))
 }
 
+#' Replace scalar atomic NA values with NULL in a list
+#'
+#' Useful when building \code{do.call()} argument lists that should omit
+#' optional parameters if they are missing.
+#'
+#' @param x A list.
+#' @return The list with scalar atomic \code{NA}s replaced by \code{NULL}.
+#' @examples
+#' na_to_null(list(a = NA_real_, b = 1:2, c = NA_character_))
+#' @export
 na_to_null <- function(x) { x[sapply(x, function(v) is.atomic(v) && length(v) == 1 && is.na(v))] <- NULL; x }
 
+#' Build argument list for a SAM posterior call
+#'
+#' Collects current/historical data and SAM prior parameters for a given arm
+#' (e.g., \code{"control"}, \code{"treatment"}), performs light validation,
+#' and returns a list ready for \code{do.call(posterior_distribution, ...)}.
+#'
+#' @param arm Character arm name (e.g., \code{"control"} or \code{"treatment"}).
+#' @param prior_params Named list of prior parameters (e.g., \code{control.a}, \code{control.b}, \code{control.w}, \code{control.delta_gate}, \code{control.delta_SAM}, \code{control.ess_h}, etc.).
+#' @param arm_data_list List of arm data (expects elements named by arms).
+#' @param historical_data_list List of historical data (expects elements named like \code{paste0(arm, hist_suffix)}).
+#' @param endpoint Endpoint string passed through to \code{posterior_distribution}.
+#' @param hist_suffix Suffix for historical arm names (default \code{"_h"}).
+#' @param validate If \code{TRUE}, run basic checks.
+#' @param require_current If \code{TRUE}, error if current data is missing.
+#' @param require_historical If \code{TRUE}, error if historical data is missing.
+#' @return A named list suitable for \code{do.call(posterior_distribution, ...)}.
+#' @examples
+#' # build_sam_args("control", prior_params, arm_data_list, historical_data_list, endpoint = "binary")
+#' @export
 build_sam_args <- function(arm,
                            prior_params,
                            arm_data_list,
@@ -447,6 +511,19 @@ build_sam_args <- function(arm,
 
 }
 
+#' Build argument list for a DPP posterior call
+#'
+#' Collects arm and historical data and DPP prior parameters, performs light
+#' validation, and returns a list ready for \code{do.call(DPP.posterior, ...)}.
+#'
+#' @param prior_params Named list of prior parameters (e.g., \code{control.a}, \code{control.b}, \code{control.ess_h}, \code{control.delta_gate}, \code{DPP.method}, \code{DPP.theta}, \code{DPP.eta}).
+#' @param arm_data_list List with per-arm data (expects \code{"treatment"} and \code{"control"}).
+#' @param historical_data_list List with historical data (expects \code{"control_h"}).
+#' @param validate If \code{TRUE}, run basic checks.
+#' @return A named list suitable for \code{do.call(DPP.posterior, ...)}.
+#' @examples
+#' # build_dpp_args(prior_params, arm_data_list, historical_data_list)
+#' @export
 build_dpp_args <- function(prior_params,
                            arm_data_list,
                            historical_data_list,
