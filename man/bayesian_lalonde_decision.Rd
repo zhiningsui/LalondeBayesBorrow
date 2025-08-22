@@ -8,7 +8,7 @@ bayesian_lalonde_decision(
   endpoint,
   data_summary,
   settings = NULL,
-  verbose = TRUE,
+  verbose = FALSE,
   prior_params,
   lrv = 0,
   tv = 0,
@@ -39,7 +39,7 @@ Historical arm data (e.g., \code{control_h.n}, \code{treatment_h.count}) are opt
 \item{settings}{A data frame (optional). Contains the settings for the simulation
 run. If provided, it will be combined with the results.}
 
-\item{verbose}{A logical value. If \code{TRUE} (default), the function prints
+\item{verbose}{A logical value. If \code{TRUE}, the function prints
 progress messages and warnings to the console.}
 
 \item{prior_params}{A named list. Contains prior distribution and borrowing

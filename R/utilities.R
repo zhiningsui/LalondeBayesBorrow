@@ -92,23 +92,43 @@ convert_RBesT_mix <- function(post, endpoint){
     stop("Input 'endpoint' must be a single string, either 'continuous' or 'binary'.")
   }
 
-  required_params <- if (endpoint == "continuous") {
-    c("w", "mu1", "sigma1", "mu2", "sigma2")
-  } else {
-    c("w", "a1", "b1", "a2", "b2")
-  }
+  if (endpoint == "continuous") {
+    required_params <- c("w", "mu1", "sigma1", "mu2", "sigma2")
 
-  if (!all(required_params %in% names(post))) {
-    missing_params <- setdiff(required_params, names(post))
-    stop(paste("Input 'post' is missing required parameters for endpoint '", endpoint, "': ",
-               paste(missing_params, collapse = ", "), sep = ""))
-  }
-
-  for (param in required_params) {
-    if (!is.numeric(post[[param]]) && !is.na(post[[param]])) {
-      stop(paste("Parameter '", param, "' in 'post' must be numeric.", sep = ""))
+    # Validate parameters for continuous endpoint
+    if (!all(required_params %in% names(post))) {
+      missing_params <- setdiff(required_params, names(post))
+      stop(paste("Input 'post' is missing required parameters for 'continuous' endpoint: ",
+                 paste(missing_params, collapse = ", "), sep = ""))
     }
+  } else if (endpoint == "binary") {
+    binary_option1_params <- c("w", "a1", "b1", "a2", "b2")
+    binary_option2_params <- c("w", "a", "b")
+
+    # Check if 'post' contains all parameters for either option 1 or option 2
+    has_option1 <- all(binary_option1_params %in% names(post))
+    has_option2 <- all(binary_option2_params %in% names(post))
+
+    # If neither option is fully present, throw an error
+    if (!has_option1 && !has_option2) {
+      missing_for_option1 <- setdiff(binary_option1_params, names(post))
+      missing_for_option2 <- setdiff(binary_option2_params, names(post))
+
+      stop(paste("Input 'post' is missing required parameters for 'binary' endpoint. ",
+                 "Expected either: (", paste(binary_option1_params, collapse = ", "), ") ",
+                 "or: (", paste(binary_option2_params, collapse = ", "), "). ",
+                 "Specifically, missing for option 1: [", paste(missing_for_option1, collapse = ", "), "]; ",
+                 "Missing for option 2: [", paste(missing_for_option2, collapse = ", "), "].", sep = ""))
+    }
+  } else {
+    stop(paste("Invalid endpoint specified: '", endpoint, "'. Expected 'continuous' or 'binary'.", sep = ""))
   }
+
+  # for (param in required_params) {
+  #   if (!is.numeric(post[[param]]) && !is.na(post[[param]])) {
+  #     stop(paste("Parameter '", param, "' in 'post' must be numeric.", sep = ""))
+  #   }
+  # }
 
   # Validate weights
   if (is.na(post$w) || post$w < 0 || post$w > 1) {
@@ -146,10 +166,15 @@ convert_RBesT_mix <- function(post, endpoint){
       mixture <- mixnorm(c(w, mu1, sigma1), c(1 - w, mu2, sigma2))
     }
   } else if (endpoint == "binary") {
-    a1 <- unname(post$a1)
-    b1 <- unname(post$b1)
-    a2 <- unname(post$a2)
-    b2 <- unname(post$b2)
+    if (has_option1) {
+      a1 <- unname(post$a1)
+      b1 <- unname(post$b1)
+      a2 <- unname(post$a2)
+      b2 <- unname(post$b2)
+    } else if (has_option2) {
+      a1 <- unname(post$a)
+      b1 <- unname(post$b)
+    }
 
     # Validate beta parameters (must be positive)
     if ((w > 0 && (is.na(a1) || a1 <= 0 || is.na(b1) || b1 <= 0)) || (w < 1 && (is.na(a2) || a2 <= 0 || is.na(b2) || b2 <= 0))) {
@@ -349,3 +374,112 @@ create_data_gen_params <- function(params, endpoint) {
 }
 
 
+num_or_null <- function(x, allow_na = FALSE) {
+  if (is.null(x) || length(x) == 0) return(NULL)
+  if (is.factor(x)) x <- as.character(x)
+  if (is.character(x)) suppressWarnings(x <- as.numeric(x))
+  if (!is.numeric(x)) return(NULL)
+  x <- x[1L]
+  if (!allow_na && is.na(x)) return(NULL)
+  x
+}
+
+get_in <- function(lst, key) if (is.null(lst)) NULL else lst[[key]]
+
+
+rows_to_list <- function(df) {
+  lapply(seq_len(nrow(df)), function(i) as.list(df[i, , drop = FALSE]))
+}
+
+na_to_null <- function(x) { x[sapply(x, function(v) is.atomic(v) && length(v) == 1 && is.na(v))] <- NULL; x }
+
+build_sam_args <- function(arm,
+                           prior_params,
+                           arm_data_list,
+                           historical_data_list,
+                           endpoint,
+                           hist_suffix = "_h",
+                           validate = TRUE,
+                           require_current = FALSE,
+                           require_historical = FALSE) {
+  current    <- get_in(arm_data_list, arm)
+  historical <- get_in(historical_data_list, paste0(arm, hist_suffix))
+
+  delta_gate <- num_or_null(prior_params[[paste0(arm, ".delta_gate")]])
+  delta_SAM  <- num_or_null(prior_params[[paste0(arm, ".delta_SAM")]])
+  if (is.null(delta_SAM)) delta_SAM <- delta_gate
+
+  args <- list(
+    endpoint   = endpoint,
+    current    = current,
+    historical = historical,
+    delta_gate = delta_gate,
+    delta_SAM  = delta_SAM,
+    w          = num_or_null(prior_params[[paste0(arm, ".w")]]),
+    a          = num_or_null(prior_params[[paste0(arm, ".a")]]),
+    b          = num_or_null(prior_params[[paste0(arm, ".b")]]),
+    a0         = num_or_null(prior_params[[paste0(arm, ".a0")]]),
+    b0         = num_or_null(prior_params[[paste0(arm, ".b0")]]),
+    theta0     = num_or_null(prior_params[[paste0(arm, ".theta0")]]),
+    s0         = num_or_null(prior_params[[paste0(arm, ".s0")]]),
+    ess_h      = num_or_null(prior_params[[paste0(arm, ".ess_h")]])
+  )
+  if (!validate) return(args)
+
+  if (is.null(endpoint)) stop("build_sam_args: `endpoint` is required.")
+  if (require_current && is.null(current)) {
+    stop(sprintf("build_sam_args: missing `current` data for arm '%s'.", arm))
+  }
+  if (require_historical && is.null(historical)) {
+    stop(sprintf("build_sam_args: missing `historical` data for arm '%s'.", arm))
+  }
+  if (!is.null(args$w) && (!is.finite(args$w) || args$w < 0 || args$w > 1)) {
+    stop("build_sam_args: `w` must be in [0, 1] when provided.")
+  }
+  for (nm in c("a","b","a0","b0","s0","ess_h")) {
+    v <- args[[nm]]
+    if (!is.null(v) && (!is.finite(v) || v < 0)) {
+      stop(sprintf("build_sam_args: `%s` must be nonnegative.", nm))
+    }
+  }
+
+  args
+
+}
+
+build_dpp_args <- function(prior_params,
+                           arm_data_list,
+                           historical_data_list,
+                           validate = TRUE) {
+
+  tdat <- get_in(arm_data_list, "treatment")
+  cdat <- get_in(arm_data_list, "control")
+  hdat <- get_in(historical_data_list, "control_h")
+
+  args <- list(
+    Yt = get_in(tdat, "count"),
+    nt = get_in(tdat, "n"),
+    Yc = get_in(cdat, "count"),
+    nc = get_in(cdat, "n"),
+    Ych = get_in(hdat, "count"),
+    nch = get_in(hdat, "n"),
+    nche = num_or_null(prior_params[["control.ess_h"]]),
+    a0c = num_or_null(prior_params[["control.a"]]),
+    b0c = num_or_null(prior_params[["control.b"]]),
+    a0t = num_or_null(prior_params[["treatment.a"]]),
+    b0t = num_or_null(prior_params[["treatment.b"]]),
+    delta_threshold = num_or_null(prior_params[["control.delta_gate"]]),
+    method = prior_params[["DPP.method"]],
+    theta  = num_or_null(prior_params[["DPP.theta"]]),
+    eta    = num_or_null(prior_params[["DPP.eta"]])
+  )
+
+  if (!validate) return(args)
+
+  must_have <- c("Yt","nt","Yc","nc","Ych","nch","a0c","b0c","a0t","b0t","delta_threshold","method")
+  missing_crit <- must_have[sapply(args[must_have], is.null)]
+  if (length(missing_crit)) {
+    stop(sprintf("build_dpp_args: missing required fields: %s", paste(missing_crit, collapse = ", ")))
+  }
+  args
+}

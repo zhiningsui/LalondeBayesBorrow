@@ -90,22 +90,38 @@
 #'   `RBesT::pmixdiff`, `RBesT::qmixdiff`
 #'
 #' @export
-bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, verbose = FALSE,
-                                      prior_params, lrv = 0, tv = 0, fgr = 0.2, fsr = 0.1, arm_names,
-                                      posterior_infer = TRUE, Lalonde_decision = TRUE,
+bayesian_lalonde_decision <- function(endpoint,
+                                      data_summary,
+                                      settings = NULL,
+                                      verbose = FALSE,
+                                      prior_params,
+                                      lrv = 0,
+                                      tv = 0,
+                                      fgr = 0.2,
+                                      fsr = 0.1,
+                                      arm_names,
+                                      posterior_infer = TRUE,
+                                      Lalonde_decision = TRUE,
                                       EXP_TRANSFORM = FALSE) {
-
   # --- Input Validation ---
   valid_endpoints <- c("continuous", "binary")
-  if (!is.character(endpoint) || length(endpoint) != 1 || !(endpoint %in% valid_endpoints)) {
-    stop(paste("Input 'endpoint' must be a single string:", paste(valid_endpoints, collapse = ", ")))
+
+  if (!is.character(endpoint) ||
+      length(endpoint) != 1 || !(endpoint %in% valid_endpoints)) {
+    stop(paste(
+      "Input 'endpoint' must be a single string:",
+      paste(valid_endpoints, collapse = ", ")
+    ))
   }
   if (!is.data.frame(data_summary)) {
     stop("Input 'data_summary' must be a data frame.")
   }
-  is_simulation <- "nsim" %in% names(data_summary) && length(unique(data_summary$nsim)) > 1
+  is_simulation <- "nsim" %in% names(data_summary) &&
+    length(unique(data_summary$nsim)) > 1
   if (!is_simulation && nrow(data_summary) > 1) {
-    warning("`data_summary` has more than one row but is not a simulation (no `nsim` column or only one `nsim` value). Only the first row will be used for analysis.")
+    warning(
+      "`data_summary` has more than one row but is not a simulation (no `nsim` column or only one `nsim` value). Only the first row will be used for analysis."
+    )
     data_summary <- data_summary[1, , drop = FALSE]
   }
   # Add nsim column if it's a single analysis
@@ -124,19 +140,24 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, v
   if (!is.numeric(tv) || length(tv) != 1 || !is.finite(tv)) {
     stop("Input 'tv' must be a single finite numeric value.")
   }
-  if (!is.numeric(fgr) || length(fgr) != 1 || !is.finite(fgr) || fgr < 0 || fgr > 1) {
+  if (!is.numeric(fgr) ||
+      length(fgr) != 1 || !is.finite(fgr) || fgr < 0 || fgr > 1) {
     stop("Input 'fgr' must be a single finite numeric value between 0 and 1.")
   }
-  if (!is.numeric(fsr) || length(fsr) != 1 || !is.finite(fsr) || fsr < 0 || fsr > 1) {
+  if (!is.numeric(fsr) ||
+      length(fsr) != 1 || !is.finite(fsr) || fsr < 0 || fsr > 1) {
     stop("Input 'fsr' must be a single finite numeric value between 0 and 1.")
   }
-  if (!is.character(arm_names) || length(arm_names) == 0 || !all(nzchar(arm_names))) {
+  if (!is.character(arm_names) ||
+      length(arm_names) == 0 || !all(nzchar(arm_names))) {
     stop("Input 'arm_names' must be a non-empty character vector with non-empty strings.")
   }
-  if (!is.logical(posterior_infer) || length(posterior_infer) != 1) {
+  if (!is.logical(posterior_infer) ||
+      length(posterior_infer) != 1) {
     stop("Input 'posterior_infer' must be a single logical value (TRUE or FALSE).")
   }
-  if (!is.logical(Lalonde_decision) || length(Lalonde_decision) != 1) {
+  if (!is.logical(Lalonde_decision) ||
+      length(Lalonde_decision) != 1) {
     stop("Input 'Lalonde_decision' must be a single logical value (TRUE or FALSE).")
   }
   if (!is.logical(EXP_TRANSFORM) || length(EXP_TRANSFORM) != 1) {
@@ -154,27 +175,64 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, v
       Sys.getenv("GITHUB_ACTIONS") == "true" ||
       Sys.getenv("_R_CHECK_LIMIT_CORES_") == "true"
 
-    ncore <- if (is_restricted) 2 else max(1, parallel::detectCores() - 1)
+    ncore <- if (is_restricted)
+      2
+    else
+      max(1, parallel::detectCores() - 1)
     cl <- tryCatch({
       parallel::makeCluster(ncore)
-      if (verbose) cat(sprintf("Setting up parallel backend with %d cores.\n", ncore))
+      if (verbose)
+        cat(sprintf("Setting up parallel backend with %d cores.\n", ncore))
     }, error = function(e) {
-      warning(paste("Could not create parallel cluster with", ncore, "cores. Falling back to sequential processing:", e$message))
+      warning(
+        paste(
+          "Could not create parallel cluster with",
+          ncore,
+          "cores. Falling back to sequential processing:",
+          e$message
+        )
+      )
       return(NULL)
     })
 
     if (!is.null(cl)) {
-      required_funcs <- c("posterior_distribution", "convert_RBesT_mix",
-                          "posterior_inference", "posterior_prob")
-      available_funcs <- sapply(required_funcs, function(f) exists(f, where = environment(NULL), inherits = TRUE))
+      required_funcs <- c(
+        "posterior_distribution",
+        "convert_RBesT_mix",
+        "posterior_inference",
+        "posterior_prob",
+        "build_sam_args",
+        "build_dpp_args",
+        "get_in",
+        "num_or_null"
+      )
+      available_funcs <- sapply(required_funcs, function(f)
+        exists(f, where = environment(NULL), inherits = TRUE))
       if (!all(available_funcs)) {
         missing_funcs <- required_funcs[!available_funcs]
-        stop(paste("Required functions for parallel export are missing:", paste(missing_funcs, collapse = ", "),
-                   ". Please ensure they are defined in the current session.", sep=""))
+        stop(
+          paste(
+            "Required functions for parallel export are missing:",
+            paste(missing_funcs, collapse = ", "),
+            ". Please ensure they are defined in the current session.",
+            sep = ""
+          )
+        )
       }
-      required_vars_for_export <- c("endpoint", "lrv", "tv", "fgr", "fsr", "arm_names",
-                                    "prior_params", "EXP_TRANSFORM", "posterior_infer")
-      parallel::clusterExport(cl, c(required_vars_for_export, required_funcs), envir = environment(NULL))
+      required_vars_for_export <- c(
+        "endpoint",
+        "lrv",
+        "tv",
+        "fgr",
+        "fsr",
+        "arm_names",
+        "prior_params",
+        "EXP_TRANSFORM",
+        "posterior_infer"
+      )
+      parallel::clusterExport(cl,
+                              c(required_vars_for_export, required_funcs),
+                              envir = environment(NULL))
 
       parallel::clusterEvalQ(cl, {
         library(dplyr)
@@ -184,11 +242,13 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, v
       })
 
       doParallel::registerDoParallel(cl)
-      if (verbose) cat("Cluster setup complete. Starting parallel computation...\n")
+      if (verbose)
+        cat("Cluster setup complete. Starting parallel computation...\n")
       parallel_enabled <- TRUE
     } else {
       foreach::registerDoSEQ()
-      if (verbose) cat("Proceeding with sequential computation.\n")
+      if (verbose)
+        cat("Proceeding with sequential computation.\n")
       parallel_enabled <- FALSE
     }
   } else {
@@ -201,12 +261,13 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, v
 
   results_list <- foreach::foreach(
     nrep_val = all_nsims,
-    .combine = function(a, b) data.table::rbindlist(list(a, b)),
+    .combine = function(a, b)
+      data.table::rbindlist(list(a, b)),
     .errorhandling = 'stop',
     .packages = c("RBesT", "dplyr", "tidyr", "data.table")
   ) %dopar% {
-
     cat("Running simulation iteration ", nrep_val, "\n")
+
     # 1. Get Data for current simulation
     current_sim_data_dt <- data_summary_dt[nsim == nrep_val, ]
 
@@ -217,19 +278,38 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, v
       prefix <- paste0(arm_nm, ".")
       arm_cols <- names(current_sim_data_dt)[startsWith(names(current_sim_data_dt), prefix)]
       if (length(arm_cols) > 0) {
-        arm_data <- setNames(as.list(current_sim_data_dt[, .SD, .SDcols = arm_cols][1,]), sub(prefix, "", arm_cols))
+        arm_data <- setNames(as.list(current_sim_data_dt[, .SD, .SDcols = arm_cols][1, ]),
+                             sub(prefix, "", arm_cols))
         arm_data_list[[arm_nm]] <- arm_data
 
-        required_data_params <- if (endpoint == "continuous") c("n", "mu_hat", "s") else c("n", "count")
+        required_data_params <- if (endpoint == "continuous")
+          c("n", "mu_hat", "s")
+        else
+          c("n", "count")
         if (!all(required_data_params %in% names(arm_data))) {
-          warning(paste("Missing required data parameters for arm '", arm_nm, "' for nsim =", nrep_val,
-                        ". Expected:", paste(required_data_params, collapse = ", "),
-                        ". Found:", paste(names(arm_data), collapse = ", "), sep=""))
+          warning(
+            paste(
+              "Missing required data parameters for arm '",
+              arm_nm,
+              "' for nsim =",
+              nrep_val,
+              ". Expected:",
+              paste(required_data_params, collapse = ", "),
+              ". Found:",
+              paste(names(arm_data), collapse = ", "),
+              sep = ""
+            )
+          )
           all_params_found <- FALSE
           break
         }
       } else {
-        warning(paste("Missing current data columns for arm '", arm_nm, "' for nsim =", nrep_val))
+        warning(paste(
+          "Missing current data columns for arm '",
+          arm_nm,
+          "' for nsim =",
+          nrep_val
+        ))
         all_params_found <- FALSE
         break
       }
@@ -242,7 +322,8 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, v
         prefix <- paste0(arm_nm, ".")
         arm_cols <- names(current_sim_data_dt)[startsWith(names(current_sim_data_dt), prefix)]
         if (length(arm_cols) > 0) {
-          historical_data_list[[arm_nm]] <- setNames(as.list(current_sim_data_dt[, .SD, .SDcols = arm_cols][1,]), sub(prefix, "", arm_cols))
+          historical_data_list[[arm_nm]] <- setNames(as.list(current_sim_data_dt[, .SD, .SDcols = arm_cols][1, ]),
+                                                     sub(prefix, "", arm_cols))
         } else {
           historical_data_list[[arm_nm]] <- NULL
         }
@@ -256,49 +337,140 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, v
     }
 
     # 2. Calculate Posterior Parameters for Treatment and Control
-    posterior_results <- tryCatch({
-      post_c_res <- posterior_distribution(endpoint = endpoint,
-                                           current = arm_data_list[["control"]],
-                                           historical = historical_data_list[["control_h"]],
-                                           delta_gate = prior_params[["control.delta_gate"]],
-                                           delta_SAM = prior_params[["control.delta_SAM"]],
-                                           w = prior_params[["control.w"]],
-                                           a = prior_params[["control.a"]], b = prior_params[["control.b"]],
-                                           a0 = prior_params[["control.a0"]], b0 = prior_params[["control.b0"]],
-                                           theta0 = prior_params[["control.theta0"]], s0 = prior_params[["control.s0"]],
-                                           ess_h = prior_params[["control.ess_h"]])
+    method <- prior_params[["method"]]
 
-      post_t_res <- posterior_distribution(endpoint = endpoint,
-                                           current = arm_data_list[["treatment"]],
-                                           historical = historical_data_list[["treatment_h"]],
-                                           delta_gate = prior_params[["treatment.delta_gate"]],
-                                           delta_SAM = prior_params[["treatment.delta_SAM"]],
-                                           w = prior_params[["treatment.w"]],
-                                           a = prior_params[["treatment.a"]], b = prior_params[["treatment.b"]],
-                                           a0 = prior_params[["treatment.a0"]], b0 = prior_params[["treatment.b0"]],
-                                           theta0 = prior_params[["treatment.theta0"]], s0 = prior_params[["treatment.s0"]],
-                                           ess_h = prior_params[["treatment.ess_h"]])
+    if (identical(method, "SAM")) {
+      posterior_results <- tryCatch({
+        c_args <- build_sam_args("control",
+                                 prior_params,
+                                 arm_data_list,
+                                 historical_data_list,
+                                 endpoint)
+        t_args <- build_sam_args("treatment",
+                                 prior_params,
+                                 arm_data_list,
+                                 historical_data_list,
+                                 endpoint)
+        post_c_res <- do.call(posterior_distribution, c_args)
+        post_t_res <- do.call(posterior_distribution, t_args)
 
-      list(post_c = post_c_res, post_t = post_t_res)
+        # post_c_res <- posterior_distribution(
+        #   endpoint = endpoint,
+        #   current = arm_data_list[["control"]],
+        #   historical = historical_data_list[["control_h"]],
+        #   delta_gate = as.numeric(prior_params[["control.delta_gate"]]),
+        #   delta_SAM = as.numeric(prior_params[["control.delta_SAM"]]),
+        #   w = if (!is.null(prior_params[["control.w"]])) as.numeric(prior_params[["control.w"]]) else NULL,
+        #   a = as.numeric(prior_params[["control.a"]]),
+        #   b = as.numeric(prior_params[["control.b"]]),
+        #   a0 = as.numeric(prior_params[["control.a0"]]),
+        #   b0 = as.numeric(prior_params[["control.b0"]]),
+        #   theta0 = as.numeric(prior_params[["control.theta0"]]),
+        #   s0 = as.numeric(prior_params[["control.s0"]]),
+        #   ess_h = as.numeric(prior_params[["control.ess_h"]])
+        # )
+        #
+        # post_t_res <- posterior_distribution(
+        #   endpoint = endpoint,
+        #   current = arm_data_list[["treatment"]],
+        #   historical = historical_data_list[["treatment_h"]],
+        #   delta_gate = as.numeric(prior_params[["treatment.delta_gate"]]),
+        #   delta_SAM = as.numeric(prior_params[["treatment.delta_SAM"]]),
+        #   w = if (!is.null(prior_params[["treatment.w"]])) as.numeric(prior_params[["treatment.w"]]) else NULL,
+        #   a = as.numeric(prior_params[["treatment.a"]]),
+        #   b = as.numeric(prior_params[["treatment.b"]]),
+        #   a0 = as.numeric(prior_params[["treatment.a0"]]),
+        #   b0 = as.numeric(prior_params[["treatment.b0"]]),
+        #   theta0 = as.numeric(prior_params[["treatment.theta0"]]),
+        #   s0 = as.numeric(prior_params[["treatment.s0"]]),
+        #   ess_h = as.numeric(prior_params[["treatment.ess_h"]])
+        # )
 
-    }, error = function(e) {
-      warning(paste("Error calculating posterior distribution for nsim =", nrep_val, ":", e$message))
-      return(NULL)
-    })
+        list(post_c = post_c_res, post_t = post_t_res)
 
-    if (is.null(posterior_results)) {
-      return(NULL)
+      }, error = function(e) {
+        warning(
+          paste(
+            "Error calculating posterior distribution for nsim =",
+            nrep_val,
+            ":",
+            e$message
+          )
+        )
+        return(NULL)
+      })
+
+      if (is.null(posterior_results))
+        return(NULL)
+
+      post_c <- posterior_results$post_c
+      post_t <- posterior_results$post_t
+
+      post_params_i <- c(unlist(post_t$post), unlist(post_c$post))
+      names(post_params_i) <- c(paste0("treatment.", names(post_t$post), "_post"),
+                                paste0("control.", names(post_c$post), "_post"))
+
+      prior_ws_i <- c(treatment.w_prior = post_t$w_prior,
+                      control.w_prior   = post_c$w_prior)
+
+      params_results <- c(nsim = nrep_val, prior_ws_i, post_params_i)
+
+    } else if (identical(method, "DPP")) {
+      posterior_results <- tryCatch({
+        dpp_args <- build_dpp_args(prior_params, arm_data_list, historical_data_list)
+        do.call(DPP.posterior, dpp_args)
+
+      }, error = function(e) {
+        warning(
+          sprintf(
+            "Error calculating DPP posterior for nsim = %s: %s",
+            nrep_val,
+            e$message
+          )
+        )
+        NULL
+      })
+
+      if (is.null(posterior_results))
+        return(NULL)
+
+      # posterior_results <- DPP.posterior(
+      #   Yt = arm_data_list[["treatment"]]$count,
+      #   nt = arm_data_list[["treatment"]]$n,
+      #   Yc = arm_data_list[["control"]]$count,
+      #   nc = arm_data_list[["control"]]$n,
+      #   Ych = historical_data_list[["control_h"]]$count,
+      #   nch = historical_data_list[["control_h"]]$n,
+      #   nche = as.numeric(prior_params[["control.ess_h"]]),
+      #   a0c = as.numeric(prior_params[["control.a"]]),
+      #   b0c = as.numeric(prior_params[["control.b"]]),
+      #   a0t = as.numeric(prior_params[["treatment.a"]]),
+      #   b0t = as.numeric(prior_params[["treatment.b"]]),
+      #   delta_threshold = as.numeric(prior_params[["control.delta_gate"]]),
+      #   method =  prior_params[["DPP.method"]],
+      #   theta = as.numeric(prior_params[["DPP.theta"]]),
+      #   eta = as.numeric(prior_params[["DPP.eta"]])
+      # )
+
+      post_c <- posterior_results$post_c
+      post_t <- posterior_results$post_t
+
+      post_params_i <- c(unlist(post_t$post), unlist(post_c$post))
+      names(post_params_i) <- c(paste0("treatment.", names(post_t$post), "_post"),
+                                paste0("control.", names(post_c$post), "_post"))
+      prior_ws_i <- c(treatment.w_prior = post_t$w_prior,
+                      control.w_prior   = post_c$w_prior)
+
+      params_results <- c(nsim = nrep_val, prior_ws_i, post_params_i)
+    } else {
+      warning(sprintf(
+        "Unknown method '%s' for nsim = %s",
+        as.character(method),
+        nrep_val
+      ))
+      NULL
     }
 
-    post_c <- posterior_results$post_c
-    post_t <- posterior_results$post_t
-
-    # Prepare raw posterior parameters for output df
-    post_params_i <- c(unlist(post_t$post), unlist(post_c$post))
-    names(post_params_i) <- c(paste0("treatment.", names(post_t$post), "_post"), paste0("control.", names(post_c$post), "_post"))
-
-    prior_ws_i <- c(treatment.w_prior = post_t$w_prior, control.w_prior = post_c$w_prior)
-    params_results <- c(nsim = nrep_val, prior_ws_i, post_params_i)
 
     # 3. Calculate Posterior Inference (95% CI and standard stats)
     post_inference_results <- tryCatch({
@@ -306,20 +478,53 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, v
       post_t_mix <- convert_RBesT_mix(post = post_t$post, endpoint = endpoint)
       post_c_mix <- convert_RBesT_mix(post = post_c$post, endpoint = endpoint)
 
-      post_est_ci_i <- posterior_inference(post1 = post_t_mix, post2 = post_c_mix,
-                                           quantiles = c(0.025, 0.975),
-                                           EXP_TRANSFORM = EXP_TRANSFORM)
+      post_est_ci_i <- posterior_inference(
+        post1 = post_t_mix,
+        post2 = post_c_mix,
+        quantiles = c(0.025, 0.975),
+        EXP_TRANSFORM = EXP_TRANSFORM
+      )
       names(post_est_ci_i) <- paste0(names(post_est_ci_i), "_95ci")
 
-      list(post_est_ci = post_est_ci_i, post_t_mix = post_t_mix, post_c_mix = post_c_mix)
+      list(
+        post_est_ci = post_est_ci_i,
+        post_t_mix = post_t_mix,
+        post_c_mix = post_c_mix
+      )
 
     }, error = function(e) {
-      warning(paste("Error during standard posterior inference (95% CI) for nsim =", nrep_val, ":", e$message))
-      placeholder_95ci_names <- c("est1_95ci", "sd1_95ci", "ci1_l_95ci", "ci1_u_95ci",
-                                  "est2_95ci", "sd2_95ci", "ci2_l_95ci", "ci2_u_95ci",
-                                  "est_compare_95ci", "sd_compare_95ci", "compare_ci_l_95ci", "compare_ci_u_95ci")
-      post_est_ci_i <- setNames(data.frame(matrix(NA_real_, ncol = length(placeholder_95ci_names), nrow = 1)), placeholder_95ci_names)
-      list(post_est_ci = post_est_ci_i, post_t_mix = NULL, post_c_mix = NULL)
+      warning(
+        paste(
+          "Error during standard posterior inference (95% CI) for nsim =",
+          nrep_val,
+          ":",
+          e$message
+        )
+      )
+      placeholder_95ci_names <- c(
+        "est1_95ci",
+        "sd1_95ci",
+        "ci1_l_95ci",
+        "ci1_u_95ci",
+        "est2_95ci",
+        "sd2_95ci",
+        "ci2_l_95ci",
+        "ci2_u_95ci",
+        "est_compare_95ci",
+        "sd_compare_95ci",
+        "compare_ci_l_95ci",
+        "compare_ci_u_95ci"
+      )
+      post_est_ci_i <- setNames(data.frame(matrix(
+        NA_real_,
+        ncol = length(placeholder_95ci_names),
+        nrow = 1
+      )), placeholder_95ci_names)
+      list(
+        post_est_ci = post_est_ci_i,
+        post_t_mix = NULL,
+        post_c_mix = NULL
+      )
 
     })
 
@@ -330,84 +535,176 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, v
     # 4. Optional Lalonde Inference (Quantiles and Probabilities)
     lalonde_criteria_i <- NULL
     post_prob_i <- NULL
-    if (posterior_infer && !is.null(post_t_mix_valid) && !is.null(post_c_mix_valid)) {
-      lalonde_quantiles <- if (lrv < tv) c(low = fgr, upper = 1 - fsr) else c(low = fsr, upper = 1 - fgr)
+    if (posterior_infer &&
+        !is.null(post_t_mix_valid) && !is.null(post_c_mix_valid)) {
+      lalonde_quantiles <- if (lrv < tv)
+        c(low = fgr, upper = 1 - fsr)
+      else
+        c(low = fsr, upper = 1 - fgr)
       lalonde_quantiles <- sort(lalonde_quantiles)
 
       lalonde_criteria_i <- tryCatch({
-        posterior_inference(post1 = post_t_mix_valid, post2 = post_c_mix_valid,
-                            quantiles = lalonde_quantiles,
-                            EXP_TRANSFORM = EXP_TRANSFORM)
+        posterior_inference(
+          post1 = post_t_mix_valid,
+          post2 = post_c_mix_valid,
+          quantiles = lalonde_quantiles,
+          EXP_TRANSFORM = EXP_TRANSFORM
+        )
       }, error = function(e) {
-        warning(paste("Error during Lalonde inference (quantiles) for nsim =", nrep_val, ":", e$message))
+        warning(
+          paste(
+            "Error during Lalonde inference (quantiles) for nsim =",
+            nrep_val,
+            ":",
+            e$message
+          )
+        )
 
-        placeholder_lalonde_names <- c("est1_lalonde", "sd1_lalonde", "ci1_l_lalonde", "ci1_u_lalonde",
-                                       "est2_lalonde", "sd2_lalonde", "ci2_l_lalonde", "ci2_u_lalonde",
-                                       "est_compare_lalonde", "sd_compare_lalonde", "compare_ci_l_lalonde", "compare_ci_u_lalonde")
-        setNames(data.frame(matrix(NA_real_, ncol = length(placeholder_lalonde_names), nrow = 1)), placeholder_lalonde_names)
+        placeholder_lalonde_names <- c(
+          "est1_lalonde",
+          "sd1_lalonde",
+          "ci1_l_lalonde",
+          "ci1_u_lalonde",
+          "est2_lalonde",
+          "sd2_lalonde",
+          "ci2_l_lalonde",
+          "ci2_u_lalonde",
+          "est_compare_lalonde",
+          "sd_compare_lalonde",
+          "compare_ci_l_lalonde",
+          "compare_ci_u_lalonde"
+        )
+        setNames(data.frame(matrix(
+          NA_real_,
+          ncol = length(placeholder_lalonde_names),
+          nrow = 1
+        )), placeholder_lalonde_names)
       })
       names(lalonde_criteria_i) <- paste0(names(lalonde_criteria_i), "_lalonde")
 
       # Calculate probabilities for the Lalonde decision rules (P(<lrv), P(lrv to tv), P(>tv))
       post_prob_i <- tryCatch({
-
-        lrv_adj <- if (EXP_TRANSFORM) log(lrv) else lrv
-        tv_adj <- if (EXP_TRANSFORM) log(tv) else tv
+        lrv_adj <- if (EXP_TRANSFORM)
+          log(lrv)
+        else
+          lrv
+        tv_adj <- if (EXP_TRANSFORM)
+          log(tv)
+        else
+          tv
 
         if (!is.finite(lrv_adj) || !is.finite(tv_adj)) {
           stop("Adjusted lrv or tv is not finite after EXP_TRANSFORM.")
         }
 
-        pr_m <- posterior_prob(post1 = post_t_mix_valid, value = lrv_adj, post2 = post_c_mix_valid,
-                               range_type = ifelse(lrv < tv, "less", "greater"))
+        pr_m <- posterior_prob(
+          post1 = post_t_mix_valid,
+          value = lrv_adj,
+          post2 = post_c_mix_valid,
+          range_type = ifelse(lrv < tv, "less", "greater")
+        )
 
-        pr_l <- posterior_prob(post1 = post_t_mix_valid, value = ifelse(lrv < tv, lrv_adj, tv_adj),
-                               post2 = post_c_mix_valid, range_type = "between",
-                               value2 = ifelse(lrv < tv, tv_adj, lrv_adj))
+        pr_l <- posterior_prob(
+          post1 = post_t_mix_valid,
+          value = ifelse(lrv < tv, lrv_adj, tv_adj),
+          post2 = post_c_mix_valid,
+          range_type = "between",
+          value2 = ifelse(lrv < tv, tv_adj, lrv_adj)
+        )
 
-        pr_t <- posterior_prob(post1 = post_t_mix_valid, value = tv_adj, post2 = post_c_mix_valid,
-                               range_type = ifelse(lrv < tv, "greater", "less"))
+        pr_t <- posterior_prob(
+          post1 = post_t_mix_valid,
+          value = tv_adj,
+          post2 = post_c_mix_valid,
+          range_type = ifelse(lrv < tv, "greater", "less")
+        )
 
-        data.frame(pr_m = pr_m, pr_l = pr_l, pr_t = pr_t)
+        data.frame(pr_m = pr_m,
+                   pr_l = pr_l,
+                   pr_t = pr_t)
 
       }, error = function(e) {
-        warning(paste("Error during Lalonde inference (probabilities) for nsim =", nrep_val, ":", e$message))
+        warning(
+          paste(
+            "Error during Lalonde inference (probabilities) for nsim =",
+            nrep_val,
+            ":",
+            e$message
+          )
+        )
 
         prob_placeholder_names <- c("pr_m", "pr_l", "pr_t")
-        setNames(data.frame(matrix(NA_real_, ncol = length(prob_placeholder_names), nrow = 1)), prob_placeholder_names)
+        setNames(data.frame(matrix(
+          NA_real_,
+          ncol = length(prob_placeholder_names),
+          nrow = 1
+        )), prob_placeholder_names)
       })
 
     } else {
-      placeholder_lalonde_names <- c("est1_lalonde", "sd1_lalonde", "ci1_l_lalonde", "ci1_u_lalonde",
-                                     "est2_lalonde", "sd2_lalonde", "ci2_l_lalonde", "ci2_u_lalonde",
-                                     "est_compare_lalonde", "sd_compare_lalonde", "compare_ci_l_lalonde", "compare_ci_u_lalonde")
-      lalonde_criteria_i <- setNames(data.frame(matrix(NA_real_, ncol = length(placeholder_lalonde_names), nrow = 1)), placeholder_lalonde_names)
+      placeholder_lalonde_names <- c(
+        "est1_lalonde",
+        "sd1_lalonde",
+        "ci1_l_lalonde",
+        "ci1_u_lalonde",
+        "est2_lalonde",
+        "sd2_lalonde",
+        "ci2_l_lalonde",
+        "ci2_u_lalonde",
+        "est_compare_lalonde",
+        "sd_compare_lalonde",
+        "compare_ci_l_lalonde",
+        "compare_ci_u_lalonde"
+      )
+      lalonde_criteria_i <- setNames(data.frame(matrix(
+        NA_real_,
+        ncol = length(placeholder_lalonde_names),
+        nrow = 1
+      )), placeholder_lalonde_names)
 
       prob_placeholder_names <- c("pr_m", "pr_l", "pr_t")
-      post_prob_i <- setNames(data.frame(matrix(NA_real_, ncol = length(prob_placeholder_names), nrow = 1)), prob_placeholder_names)
+      post_prob_i <- setNames(data.frame(matrix(
+        NA_real_,
+        ncol = length(prob_placeholder_names),
+        nrow = 1
+      )), prob_placeholder_names)
     }
 
     # 5. Add decision columns if requested
     decision_pr <- NA_character_
     decision_ci <- NA_character_
 
-    if (Lalonde_decision && posterior_infer && !is.null(post_prob_i) && !is.null(lalonde_criteria_i)) {
+    if (Lalonde_decision &&
+        posterior_infer &&
+        !is.null(post_prob_i) && !is.null(lalonde_criteria_i)) {
       if (all(c("pr_t", "pr_l") %in% names(post_prob_i)) &&
-          all(c("compare_ci_l_lalonde", "compare_ci_u_lalonde") %in% names(lalonde_criteria_i)) &&
+          all(
+            c("compare_ci_l_lalonde", "compare_ci_u_lalonde") %in% names(lalonde_criteria_i)
+          ) &&
           !anyNA(post_prob_i[, c("pr_t", "pr_l")]) &&
           !anyNA(lalonde_criteria_i[, c("compare_ci_l_lalonde", "compare_ci_u_lalonde")])) {
-
-        if (verbose) cat("Start making decisions based on Lalonde framework.\n")
+        if (verbose)
+          cat("Start making decisions based on Lalonde framework.\n")
 
         # Probability Decision
         sum_probs <- post_prob_i$pr_m + post_prob_i$pr_l + post_prob_i$pr_t
         if (abs(sum_probs - 1) > .Machine$double.eps * 100) {
-          warning(paste("Probabilities pr_m, pr_l, pr_t for nsim =", nrep_val, "do not sum to 1 (sum =", round(sum_probs, 3), "). Decision might be unreliable."))
+          warning(
+            paste(
+              "Probabilities pr_m, pr_l, pr_t for nsim =",
+              nrep_val,
+              "do not sum to 1 (sum =",
+              round(sum_probs, 3),
+              "). Decision might be unreliable."
+            )
+          )
         }
 
         decision_pr <- case_when(
-          (post_prob_i$pr_t > fsr) & (post_prob_i$pr_l + post_prob_i$pr_t > 1 - fgr) ~ "Go",
-          (post_prob_i$pr_t > fsr) & (post_prob_i$pr_l + post_prob_i$pr_t <= 1 - fgr) ~ "Consider",
+          (post_prob_i$pr_t > fsr) &
+            (post_prob_i$pr_l + post_prob_i$pr_t > 1 - fgr) ~ "Go",
+          (post_prob_i$pr_t > fsr) &
+            (post_prob_i$pr_l + post_prob_i$pr_t <= 1 - fgr) ~ "Consider",
           post_prob_i$pr_t <= fsr ~ "No-Go",
           TRUE ~ NA_character_
         )
@@ -416,70 +713,143 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, v
         ci_lower_bound <- lalonde_criteria_i$compare_ci_l_lalonde
         ci_upper_bound <- lalonde_criteria_i$compare_ci_u_lalonde
 
-        decision_ci <- if (lrv < tv) { # "Greater is better" implied (lrv < tv)
+        decision_ci <- if (lrv < tv) {
+          # "Greater is better" implied (lrv < tv)
           case_when(
             ci_upper_bound > tv & ci_lower_bound > lrv ~ "Go",
-            ci_upper_bound > tv & ci_lower_bound <= lrv ~ "Consider",
+            ci_upper_bound > tv &
+              ci_lower_bound <= lrv ~ "Consider",
             ci_upper_bound <= tv ~ "No-Go",
             TRUE ~ NA_character_
           )
-        } else { # "Less is better" implied (lrv > tv)
+        } else {
+          # "Less is better" implied (lrv > tv)
           case_when(
             ci_lower_bound < tv & ci_upper_bound < lrv ~ "Go",
-            ci_lower_bound < tv & ci_upper_bound >= lrv ~ "Consider",
+            ci_lower_bound < tv &
+              ci_upper_bound >= lrv ~ "Consider",
             ci_lower_bound >= tv ~ "No-Go",
             TRUE ~ NA_character_
           )
         }
 
       } else if (Lalonde_decision && posterior_infer) {
-        warning(paste("Required probability or CI quantile results for Lalonde decision are missing or NA for nsim =", nrep_val, ". Skipping decision for this simulation."))
+        warning(
+          paste(
+            "Required probability or CI quantile results for Lalonde decision are missing or NA for nsim =",
+            nrep_val,
+            ". Skipping decision for this simulation."
+          )
+        )
         decision_pr <- NA_character_
         decision_ci <- NA_character_
       }
     }
 
     # 6. Combine all results for this simulation into a single row data.table
-    result_df_i <- data.table::as.data.table(cbind(
-      current_sim_data_dt,
-      t(as.data.frame(params_results)),
-      as.data.frame(post_est_ci_i),
-      as.data.frame(lalonde_criteria_i),
-      as.data.frame(post_prob_i),
-      data.frame(decision_pr = decision_pr, decision_ci = decision_ci)
-    ))
+    result_df_i <- data.table::as.data.table(
+      cbind(
+        current_sim_data_dt,
+        t(as.data.frame(params_results)),
+        as.data.frame(post_est_ci_i),
+        as.data.frame(lalonde_criteria_i),
+        as.data.frame(post_prob_i),
+        data.frame(decision_pr = decision_pr, decision_ci = decision_ci)
+      )
+    )
     result_df_i
   }
 
   if (parallel_enabled && !is.null(cl)) {
-    if (verbose) cat("Parallel computation finished. Stopping cluster.\n")
+    if (verbose)
+      cat("Parallel computation finished. Stopping cluster.\n")
     stopCluster(cl)
     registerDoSEQ()
   } else {
-    if (verbose) cat("Sequential computation finished.\n")
+    if (verbose)
+      cat("Sequential computation finished.\n")
   }
 
   # --- Post-processing ---
   if (is.null(results_list) || nrow(results_list) == 0) {
     warning("No successful simulation results were returned by the parallel loop.")
 
-    post_params_df <- data.frame(matrix(ncol = length(unique(c(paste0("treatment.", names(posterior_results$post_t$post), "_post"), paste0("control.", names(posterior_results$post_c$post), "_post"), "treatment.w_prior", "control.w_prior"))), nrow = 0))
-    colnames(post_params_df) <- unique(c(paste0("treatment.", names(posterior_results$post_t$post), "_post"), paste0("control.", names(posterior_results$post_c$post), "_post"), "treatment.w_prior", "control.w_prior"))
+    post_params_df <- data.frame(matrix(ncol = length(unique(
+      c(
+        paste0(
+          "treatment.",
+          names(posterior_results$post_t$post),
+          "_post"
+        ),
+        paste0(
+          "control.",
+          names(posterior_results$post_c$post),
+          "_post"
+        ),
+        "treatment.w_prior",
+        "control.w_prior"
+      )
+    )), nrow = 0))
+    colnames(post_params_df) <- unique(c(
+      paste0(
+        "treatment.",
+        names(posterior_results$post_t$post),
+        "_post"
+      ),
+      paste0(
+        "control.",
+        names(posterior_results$post_c$post),
+        "_post"
+      ),
+      "treatment.w_prior",
+      "control.w_prior"
+    ))
     post_params_df$nsim <- numeric()
 
-    placeholder_95ci_names <- c("est1_95ci", "sd1_95ci", "ci1_l_95ci", "ci1_u_95ci",
-                                "est2_95ci", "sd2_95ci", "ci2_l_95ci", "ci2_u_95ci",
-                                "est_compare_95ci", "sd_compare_95ci", "compare_ci_l_95ci", "compare_ci_u_95ci")
-    post_est_ci_df <- setNames(data.frame(matrix(NA_real_, ncol = length(placeholder_95ci_names), nrow = 0)), placeholder_95ci_names)
+    placeholder_95ci_names <- c(
+      "est1_95ci",
+      "sd1_95ci",
+      "ci1_l_95ci",
+      "ci1_u_95ci",
+      "est2_95ci",
+      "sd2_95ci",
+      "ci2_l_95ci",
+      "ci2_u_95ci",
+      "est_compare_95ci",
+      "sd_compare_95ci",
+      "compare_ci_l_95ci",
+      "compare_ci_u_95ci"
+    )
+    post_est_ci_df <- setNames(data.frame(matrix(
+      NA_real_,
+      ncol = length(placeholder_95ci_names),
+      nrow = 0
+    )), placeholder_95ci_names)
     post_est_ci_df$nsim <- numeric()
 
-    placeholder_lalonde_names <- c("est1_lalonde", "sd1_lalonde", "ci1_l_lalonde", "ci1_u_lalonde",
-                                   "est2_lalonde", "sd2_lalonde", "ci2_l_lalonde", "ci2_u_lalonde",
-                                   "est_compare_lalonde", "sd_compare_lalonde", "compare_ci_l_lalonde", "compare_ci_u_lalonde")
+    placeholder_lalonde_names <- c(
+      "est1_lalonde",
+      "sd1_lalonde",
+      "ci1_l_lalonde",
+      "ci1_u_lalonde",
+      "est2_lalonde",
+      "sd2_lalonde",
+      "ci2_l_lalonde",
+      "ci2_u_lalonde",
+      "est_compare_lalonde",
+      "sd_compare_lalonde",
+      "compare_ci_l_lalonde",
+      "compare_ci_u_lalonde"
+    )
     prob_placeholder_names <- c("pr_m", "pr_l", "pr_t")
     decision_names <- c("decision_pr", "decision_ci")
 
-    post_inference_df <- setNames(data.frame(matrix(NA_real_, ncol = length(placeholder_lalonde_names) + length(prob_placeholder_names), nrow = 0)), c(placeholder_lalonde_names, prob_placeholder_names))
+    post_inference_df <- setNames(data.frame(matrix(
+      NA_real_,
+      ncol = length(placeholder_lalonde_names) + length(prob_placeholder_names),
+      nrow = 0
+    )),
+    c(placeholder_lalonde_names, prob_placeholder_names))
     post_inference_df[, decision_names] <- NA_character_
     post_inference_df$nsim <- numeric()
 
@@ -488,15 +858,22 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, v
     post_est_ci_df <- post_est_ci_df %>% select(nsim, everything())
     post_inference_df <- post_inference_df %>% select(nsim, everything())
 
-    return(list(post_params = post_params_df,
-                post_est_ci = post_est_ci_df,
-                post_inference = post_inference_df))
+    return(
+      list(
+        post_params = post_params_df,
+        post_est_ci = post_est_ci_df,
+        post_inference = post_inference_df
+      )
+    )
 
   }
 
+
   if (!is.null(settings)) {
     if (is.data.frame(settings) && nrow(settings) == 1) {
-      results_list <- cbind(settings, results_list)
+      settings_num <- unlist(apply(settings, 2, num_or_null))
+      settings <- c(settings[!names(settings) %in% names(settings_num)], settings_num)
+      results_list <- cbind(as.data.frame(settings), results_list)
     } else {
       warning("'settings' must be a single-row data frame. Ignoring.")
     }
@@ -522,14 +899,20 @@ bayesian_lalonde_decision <- function(endpoint, data_summary, settings = NULL, v
     select(any_of(c(names(settings), names(data_summary))), ends_with("_95ci"))
 
   post_inference_df <- results_list %>%
-    select(any_of(c(names(settings), names(data_summary))), ends_with("_lalonde"), starts_with("pr_"), one_of(c("decision_pr", "decision_ci")))
+    select(any_of(c(names(settings), names(data_summary))),
+           ends_with("_lalonde"),
+           starts_with("pr_"),
+           one_of(c("decision_pr", "decision_ci")))
 
 
-  if (verbose) cat("Function execution complete.\n")
+  if (verbose)
+    cat("Function execution complete.\n")
 
-  return(list(post_params = as.data.frame(post_params_df),
-              post_est_ci = as.data.frame(post_est_ci_df),
-              post_inference = as.data.frame(post_inference_df)))
+  return(
+    list(
+      post_params = as.data.frame(post_params_df),
+      post_est_ci = as.data.frame(post_est_ci_df),
+      post_inference = as.data.frame(post_inference_df)
+    )
+  )
 }
-
-

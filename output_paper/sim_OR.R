@@ -73,44 +73,61 @@ for (i in seq_along(data_gen_params_list)) {
   summary <- cbind(summary, summary_h)
 
   # --- Define prior parameters ---
+
+  prior_params_list <- list()
+
+  # No Borrowing ------------------------------------------------------------
+  prior_params_list[["No Borrow"]] <- list(
+    method = "SAM",
+    treatment.a0 = 1, treatment.b0 = 1, treatment.a = 1, treatment.b = 1, treatment.w = 0,
+    control.a0   = 1, control.b0   = 1, control.a   = 1, control.b   = 1, control.w   = 0
+  )
+
+  # Modified SAM ------------------------------------------------------------
   prior_grid <- expand.grid(
-    treatment.a0 = 1,
-    treatment.b0 = 1,
-    treatment.a = 1,
-    treatment.b = 1,
-    treatment.w = 0,
-    control.a0 = 1,
-    control.b0 = 1,
-    control.a = 1,
-    control.b = 1,
-    control.w = NA, # allow SAM prior
+    method = "SAM",
+    treatment.a0 = 1, treatment.b0 = 1, treatment.a = 1, treatment.b = 1, treatment.w = 0,
+    control.a0 = 1, control.b0 = 1, control.a = 1, control.b = 1,
+    control.w = NA,                      # allow SAM prior
     control.delta_gate = c(0.1, 0.15),
     control.ess_h = c(45, 90, 180),
     stringsAsFactors = FALSE
-  ) %>%
-    mutate(control.delta_SAM = control.delta_gate)
-
-  # Convert to list and replace NA with NULL
-  prior_params_list <- apply(prior_grid, 1, function(row) {
-    out <- as.list(row)
-    if (is.na(out$control.w)) out$control.w <- NULL
-    if (is.na(out$control.delta_gate)) out$control.delta_gate <- NULL
-    out
-  })
-
-  # Add no borrowing prior
-  prior_params_list[[length(prior_params_list)+1]] <- list(
-    treatment.a0 = 1,
-    treatment.b0 = 1,
-    treatment.a = 1,
-    treatment.b = 1,
-    treatment.w = 0,
-    control.a0 = 1,
-    control.b0 = 1,
-    control.a = 1,
-    control.b = 1,
-    control.w = 0
   )
+
+  prior_grid$control.delta_SAM <- prior_grid$control.delta_gate
+
+  prior_params_list2 <- lapply(rows_to_list(prior_grid), na_to_null)
+  names(prior_params_list2) <- paste0("gated_SAM.", seq_along(prior_params_list2))
+
+  # Naive SAM ---------------------------------------------------------------
+  prior_grid <- expand.grid(
+    method = "SAM",
+    treatment.a0 = 1, treatment.b0 = 1, treatment.a = 1, treatment.b = 1, treatment.w = 0,
+    control.a0 = 1, control.b0 = 1, control.a = 1, control.b = 1,
+    control.w = NA,                      # allow SAM prior
+    control.delta_SAM = c(0.1, 0.15),
+    control.delta_gate = NA,
+    control.ess_h = NA,
+    stringsAsFactors = FALSE
+  )
+  prior_params_list3 <- lapply(rows_to_list(prior_grid), na_to_null)
+  names(prior_params_list3) <- paste0("naive_SAM.", seq_along(prior_params_list3))
+
+  # DPP ---------------------------------------------------------------------
+  prior_grid <- expand.grid(
+    method = "DPP",
+    DPP.method = "Empirical Bayes",
+    treatment.a = 1, treatment.b = 1,
+    control.a = 1, control.b = 1,
+    control.delta_gate = c(0.1, 0.15),
+    control.ess_h = c(45, 90, 180),
+    DPP.theta = NA, DPP.eta = NA,
+    stringsAsFactors = FALSE
+  )
+  prior_params_list4 <- lapply(rows_to_list(prior_grid), na_to_null)
+  names(prior_params_list4) <- paste0("DPP.", seq_along(prior_params_list4))
+
+  prior_params_list <- c(prior_params_list, prior_params_list2, prior_params_list3, prior_params_list4)
 
   # --- Run analysis ---
   cat("Start Bayesian analysis.\n")
@@ -123,11 +140,16 @@ for (i in seq_along(data_gen_params_list)) {
                   data_gen_params, data_gen_params_h,
                   prior_params)
 
-    settings <- as.data.frame(t(unlist(settings)), stringsAsFactors = FALSE) %>%
-      mutate(across(
-        .cols = -c(ends_with(".name")),
-        .fns = as.numeric
-      ))
+    settings <- as.data.frame(t(unlist(settings)), stringsAsFactors = FALSE)
+
+    settings_num <- unlist(apply(settings, 2, num_or_null))
+    settings <- as.data.frame(c(settings[!names(settings) %in% names(settings_num)], settings_num))
+
+    # settings <- as.data.frame(t(unlist(settings)), stringsAsFactors = FALSE) %>%
+    #   mutate(across(
+    #     .cols = -c(method, ends_with(".name")),
+    #     .fns = as.numeric
+    #   ))
 
     post <- bayesian_lalonde_decision(endpoint = "binary",
                                       data_summary = summary,
@@ -144,16 +166,24 @@ for (i in seq_along(data_gen_params_list)) {
 
     post$metrics_post_dist <- cbind(settings,
                                     calc_post_dist_metrics(endpoint = "OR",
-                                                           true_value = post$post_est_ci$true_value.compare_true,
+                                                           true_value = unique(post$post_est_ci$true_value.compare_true),
                                                            post_est_ci = post$post_est_ci))
 
-    bayes_results[[length(bayes_results)+1]] <- post
-
+    # --- Save elapsed time for this prior ---
     end_time_k <- Sys.time()
-    cat("Time for Bayesian analysis with prior parameter list", k, "=", round(difftime(end_time_k, start_time_k, units = "secs"), 2), "seconds\n\n")
+    elapsed_k  <- as.numeric(difftime(end_time_k, start_time_k, units = "secs"))
+    post$elapsed_time_secs <- elapsed_k
+
+    bayes_results[[length(bayes_results) + 1]] <- post
+
+    cat("Time for Bayesian analysis with prior parameter list", k, "=",
+        round(elapsed_k, 2), "seconds\n\n")
   }
+
   end_time_i <- Sys.time()
-  cat("Total time for data_gen_params set", i, "=", round(difftime(end_time_i, start_time_i, units = "secs"), 2), "seconds\n\n")
+  elapsed_i  <- as.numeric(difftime(end_time_i, start_time_i, units = "secs"))
+  cat("Total time for data_gen_params set", i, "=",
+      round(elapsed_i, 2), "seconds\n\n")
 }
 
 saveRDS(bayes_results, file = "output_paper/sim_OR_bayes_results.rds")

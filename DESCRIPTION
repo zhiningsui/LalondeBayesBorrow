@@ -36,7 +36,8 @@ Imports:
     glue,
     scales,
     stringr,
-    tibble
+    tibble,
+    BayesianHybridDesign
 Suggests:
     knitr,
     rmarkdown,
