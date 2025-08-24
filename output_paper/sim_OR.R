@@ -185,6 +185,6 @@ for (i in seq_along(data_gen_params_list)) {
       round(elapsed_i, 2), "seconds\n\n")
 }
 
-saveRDS(bayes_results, file = "output_paper/sim_OR_bayes_results.rds")
+saveRDS(bayes_results, file = "sim_OR_bayes_results_0824.rds")
 
 

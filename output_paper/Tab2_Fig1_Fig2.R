@@ -6,37 +6,152 @@ library(patchwork)
 
 # Analysis ----------------------------------------------------------------
 
-bayes_results <- readRDS("output_paper/sim_OR_bayes_results.rds") # Obtained from sim_OR.R
+bayes_results <- readRDS("sim_OR_bayes_results_0824.rds") # Obtained from sim_OR.R
 results <- process_sim_results(bayes_results)
 
 # + Generate summary table --------------------------------------
 
 # Create the summary table for PMD
-pmd_summary <- create_pmd_summary(post_inference_all = results$post_inference_all)
+post_inference_all <- results$post_inference_all %>%
+  mutate(method = ifelse(is.na(control.delta_gate), "Naive-SAM", method))
+
+pmd_summary <- create_pmd_summary(post_inference_all)
 
 # Create Table 2
-pmd_tab <- pmd_summary %>%
+pmd_tab1 <- pmd_summary %>%
+  filter(method == "SAM") %>%
   pivot_longer(c(mean_pmd, sd_pmd)) %>%
-  select(-control.delta_gate) %>%
-  pivot_wider(names_from = c(control.delta_SAM, control.ess_h),
+  select(-control.delta_SAM) %>%
+  pivot_wider(names_from = c(method, control.delta_gate, control.ess_h),
               values_from = value, names_sort = T) %>%
-  mutate(name = factor(name, levels = c("mean_pmd", "sd_pmd"))) %>%
-  select(c(12, 3, 13:18)) %>%
+  mutate(name = factor(name, levels = c("mean_pmd", "sd_pmd")))  %>%
+  select(where(~ n_distinct(.) > 1)) %>%
   arrange(name, control.p)
 
-kbl(pmd_tab,
+pmd_tab2 <- pmd_summary %>%
+  filter(method == "Naive-SAM") %>%
+  pivot_longer(c(mean_pmd, sd_pmd)) %>%
+  pivot_wider(names_from = c(method, control.delta_SAM, control.ess_h),
+              values_from = value, names_sort = T) %>%
+  mutate(name = factor(name, levels = c("mean_pmd", "sd_pmd"))) %>%
+  select(where(~ n_distinct(.) > 1)) %>%
+  arrange(name, control.p)
+
+pmd_tab3 <- pmd_summary %>%
+  filter(method == "DPP") %>%
+  pivot_longer(c(mean_pmd, sd_pmd)) %>%
+  pivot_wider(names_from = c(method, control.delta_gate, control.ess_h),
+              values_from = value, names_sort = T) %>%
+  mutate(name = factor(name, levels = c("mean_pmd", "sd_pmd"))) %>%
+  select(where(~ n_distinct(.) > 1)) %>%
+  arrange(name, control.p)
+
+
+pmd_tab <- left_join(pmd_tab1, pmd_tab2) %>%
+  left_join(pmd_tab3)
+
+
+kbl(pmd_tab[, c(2,1, 3:16)],
     escape = F,
-    # format = "latex",
+    format = "latex",
     row.names = FALSE,
     digits = 4,
     col.names = c("Metric", "control.p",
-                  rep(c("45", "90", "180"), 2))) %>%
+                  rep(c("45", "90", "180"), 2),
+                  rep("NA",2),
+                  rep(c("45", "90", "180"), 2)),
+    booktabs = T) %>%
   kable_styling(bootstrap_options = c("condensed"), full_width = FALSE) %>%
   kable_classic(full_width = FALSE) %>%
   add_header_above(c(" " = 1, " " = 1,
-                     "Borrowing with delta = 0.1" = 3,
-                     "Borrowing with delta = 0.15" = 3)) %>%
+                     "delta = 0.1" = 3,
+                     "delta = 0.15" = 3,
+                     "delta = 0.1" = 1,
+                     "delta = 0.15" = 1,
+                     "delta = 0.1" = 3,
+                     "delta = 0.15" = 3)) %>%
+  add_header_above(c(" " = 1, " " = 1,
+                     "Proposed SAM" = 6,
+                     "Naive SAM" = 2,
+                     "DPP" = 6)) %>%
   collapse_rows(columns = 1, valign = "middle")
+
+
+# MSE of Treatment Effect -------------------------------------------------
+
+MSEs <- post_inference_all %>%
+  select(c(nsim, method, true_value.compare_true, control.p, control.delta_gate, control.delta_SAM,
+           control.ess_h, borrow, est_compare_lalonde
+           )) %>%
+  group_by(method, true_value.compare_true, control.p, control.delta_gate, control.delta_SAM, control.ess_h, borrow) %>%
+  summarise(mse = mean((true_value.compare_true - est_compare_lalonde)^2)) %>%
+  ungroup()
+
+MSEs_noborrow <- MSEs %>% filter(borrow == "No")
+MSEs_borrow <- MSEs %>% filter(borrow == "Yes")
+
+# Create Table 2
+mse_tab1 <- MSEs_borrow %>%
+  filter(method == "SAM") %>%
+  select(-control.delta_SAM) %>%
+  pivot_wider(names_from = c(method, control.delta_gate, control.ess_h),
+              values_from = mse, names_sort = T) %>%
+  select(where(~ n_distinct(.) > 1)) %>%
+  arrange(control.p)
+
+mse_tab2 <- MSEs_borrow %>%
+  filter(method == "Naive-SAM") %>%
+  select(-control.delta_gate) %>%
+  pivot_wider(names_from = c(method, control.delta_SAM, control.ess_h),
+              values_from = mse, names_sort = T) %>%
+  select(where(~ n_distinct(.) > 1)) %>%
+  arrange(control.p)
+
+mse_tab3 <- MSEs_borrow %>%
+  filter(method == "DPP") %>%
+  select(-control.delta_SAM) %>%
+  pivot_wider(names_from = c(method, control.delta_gate, control.ess_h),
+              values_from = mse, names_sort = T) %>%
+  select(where(~ n_distinct(.) > 1)) %>%
+  arrange(control.p)
+
+
+mse_tab4 <- MSEs_noborrow  %>%
+  select(where(~ n_distinct(.) > 1)) %>%
+  rename(noborrow = mse)
+
+mse_tab <- left_join(mse_tab4, mse_tab1) %>%
+  left_join(mse_tab2) %>%
+  left_join(mse_tab3) %>%
+  arrange(control.p)
+
+
+kbl(mse_tab[, c(2,1, 3:17)],
+    escape = F,
+    format = "latex",
+    row.names = FALSE,
+    digits = 4,
+    col.names = c("control.p", "Delta", "NA",
+                  rep(c("45", "90", "180"), 2),
+                  rep("NA",2),
+                  rep(c("45", "90", "180"), 2)),
+    booktabs = T) %>%
+  kable_styling(bootstrap_options = c("condensed"), full_width = FALSE) %>%
+  kable_classic(full_width = FALSE) %>%
+  add_header_above(c(" " = 1, " " = 1, " " = 1,
+                     "delta = 0.1" = 3,
+                     "delta = 0.15" = 3,
+                     "delta = 0.1" = 1,
+                     "delta = 0.15" = 1,
+                     "delta = 0.1" = 3,
+                     "delta = 0.15" = 3)) %>%
+  add_header_above(c(" " = 1, " " = 1,
+                     "No Borrow" = 1,
+                     "Proposed SAM" = 6,
+                     "Naive SAM" = 2,
+                     "DPP" = 6)) %>%
+  collapse_rows(columns = 1, valign = "middle")
+
 
 
 # + Visualize risks -------------------------------------------------------
