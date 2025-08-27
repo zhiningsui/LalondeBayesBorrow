@@ -175,7 +175,7 @@ for (i in seq_along(data_gen_params_list)) {
 
     bayes_results[[length(bayes_results) + 1]] <- post
 
-    cat("Time for Bayesian analysis with prior parameter list", k, "=",
+    cat("Time for Bayesian analysis with prior parameter list", k, "for data_gen_params set", i, "=",
         round(elapsed_k, 2), "seconds\n\n")
   }
 
