@@ -2,37 +2,73 @@
 % Please edit documentation in R/process_results.R
 \name{create_pmd_summary}
 \alias{create_pmd_summary}
-\title{Create a Data Frame of Posterior Mean Differences (PMD)}
+\title{Create a Posterior Mean Difference (PMD) summary}
 \usage{
 create_pmd_summary(
   post_inference_all,
   borrow_to_compare = c("Yes", "No"),
+  scn_var = "design_scenario",
+  prior_var = "prior_name",
   pmd_var = "est2_lalonde",
-  group_vars = NULL
+  group_vars = NULL,
+  control.only = TRUE
 )
 }
 \arguments{
-\item{post_inference_all}{A data frame containing the posterior inference results
-from a simulation run, typically from \code{process_sim_results()}.}
+\item{post_inference_all}{A data frame of posterior results (one row per simulation),
+typically from \code{bayesian_lalonde_decision(...)[["post_inference"]]}.
+Must contain columns \code{nsim}, \code{borrow}, and the PMD variable (see \code{pmd_var}).}
 
-\item{borrow_to_compare}{A character vector of length two specifying the two borrowing
-conditions from the 'borrow' column to compare (e.g., c("Yes", "No")). The
-difference will be calculated as \code{borrow_to_compare[1] - borrow_to_compare[2]}.}
+\item{borrow_to_compare}{Character(2). The two levels of \code{borrow} to contrast
+(difference computed as \code{borrow_to_compare[1] - borrow_to_compare[2]}).}
 
-\item{pmd_var}{The name of the single posterior estimate variable to use for
-calculating the PMD. Defaults to \code{"est2_lalonde"}.}
+\item{scn_var}{Character vector of scenario column names to include if present
+(default \code{"design_scenario"}).}
 
-\item{group_vars}{A character vector of variable names to group by. If \code{NULL},
-the function will automatically use all setting columns.}
+\item{prior_var}{Character vector of prior/borrrowing column names to include
+if present (default \code{"prior_name"}).}
+
+\item{pmd_var}{Single column name with the posterior estimate used for PMD
+(default \code{"est2_lalonde"}).}
+
+\item{group_vars}{Character vector of grouping variables. If \code{NULL}, they are
+auto-detected from \code{scn_var}/\code{prior_var} (and possibly a compact control ID).}
+
+\item{control.only}{Logical. If \code{TRUE}, and control-related columns exist,
+create a compact \code{design_scenario.control} grouping ID (default \code{TRUE}).}
 }
 \value{
-A data frame summarizing the mean and standard deviation of the PMD for
-each relevant combination of settings.
+A list with:
+\itemize{
+\item \code{pmd_summary}: tibble with one row per group and columns
+\code{mean_pmd}, \code{sd_pmd}.
+\item \code{priors}: optional tibble of prior-related grouping columns
+(returned only when \code{group_vars = NULL} and \code{prior_var} found).
+\item \code{scenarios}: optional tibble of scenario-related grouping columns
+(returned only when \code{group_vars = NULL} and \code{scn_var} found).
+}
 }
 \description{
-This function calculates the Posterior Mean Difference (PMD) by comparing any
-two specified borrowing scenarios from a simulation run. It correctly handles
-both one-to-one comparisons (e.g., 'SAM Prior' vs. 'Fixed Weight') and
-one-to-many comparisons against a common baseline (e.g., comparing multiple
-borrowing scenarios to a single 'No Borrowing' run).
+Compute the Posterior Mean Difference (PMD) between two borrowing
+conditions (e.g., \code{"Yes"} vs \code{"No"}) across simulations and user-specified
+grouping variables. Works for one-to-one comparisons and the common
+"vs. No borrowing" baseline case by the same unified logic.
+}
+\details{
+The function filters \code{post_inference_all} to the two levels in
+\code{borrow_to_compare}, pivots wide on \code{borrow}, and computes
+\eqn{\text{PMD} = \hat{\theta}_{\text{level1}} - \hat{\theta}_{\text{level2}}}
+within each simulation (\code{nsim}) and group. It then summarizes
+\code{mean_pmd} and \code{sd_pmd} across simulations for each group.
+
+If \code{group_vars = NULL}, the function will:
+\enumerate{
+\item use any present columns from \code{scn_var} and \code{prior_var};
+\item optionally construct a compact control-only scenario ID
+(\code{design_scenario.control}) when \code{control.only = TRUE} and there are
+multiple distinct "control" columns to define the grouping.
+}
+
+Returned metadata tibbles \code{priors} and \code{scenarios} are included \strong{only} when
+\code{group_vars = NULL} and the corresponding inputs exist.
 }
