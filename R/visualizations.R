@@ -190,18 +190,18 @@ plot_posterior <- function(post_params, post_inference, endpoint, title_format =
     pivot_longer(-x, names_to = "curve", values_to = "density") %>%
     mutate(curve = recode(curve,
                           control_noborrow = "Concurrent Control",
-                          control_mixture = "Hybrid Control (SAM Prior)",
+                          control_mixture = "Hybrid Control (gSAM Prior)",
                           treatment = "Experimental Arm"))
 
   # --- Define plot aesthetics ---
   fill_colors <- c(
     "Concurrent Control" = rgb(0, 0, 1, 0.3),
-    "Hybrid Control (SAM Prior)" = rgb(1, 0, 0, 0.3),
+    "Hybrid Control (gSAM Prior)" = rgb(1, 0, 0, 0.3),
     "Experimental Arm" = rgb(0, 1, 0, 0.3)
   )
   line_colors <- c(
     "Concurrent Control" = "blue",
-    "Hybrid Control (SAM Prior)" = "red",
+    "Hybrid Control (gSAM Prior)" = "red",
     "Experimental Arm" = "green"
   )
 

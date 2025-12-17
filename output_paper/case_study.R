@@ -555,7 +555,7 @@ fig_real <- fig_real_A / p_combined +
     heights = c(1.1,3.7)) &
   theme(plot.tag = element_text(size = 25))
 
-ggsave("casestudy_analysis_new.jpg", fig_real, width = 15, height = 14)
+ggsave("casestudy_analysis_new.jpg", fig_real, width = 16, height = 14)
 
 
 
